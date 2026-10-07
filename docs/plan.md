@@ -1,4 +1,38 @@
-# SVG Library Browser — Updated Phased Implementation Plan
+---
+type: plan
+project: "Iconarium"
+status: active
+version: 2
+updated: 2026-10-07
+phases:
+  - id: 1
+    name: "A — Foundation & contracts (WP-01)"
+    status: complete
+  - id: 2
+    name: "B — Core engine, index/search, UI (WP-04..11, 14-16, 18)"
+    status: complete
+  - id: 3
+    name: "C — Tauri integration: queue, protocols, watcher, clipboard, drag (WP-12, 13, 17, 19)"
+    status: complete
+  - id: 4
+    name: "D — Datasets, stress tests, hardening (WP-20)"
+    status: complete
+  - id: 5
+    name: "E — Independent review, real-app E2E, delivery (WP-21)"
+    status: complete
+  - id: 6
+    name: "F — Release engineering: Iconarium name, MIT, NSIS installer, auto-update (WP-22)"
+    status: in_progress
+  - id: 7
+    name: "G — Windows validation and first public release"
+    status: pending
+current_phase: 6
+---
+
+# Iconarium — Product Plan
+
+> Product name: **Iconarium** (working title was "SVG Library Browser"). License: MIT. Repository: https://github.com/echozulucode/iconarium.
+> Sections 1–43 are the original product plan. Execution status, decisions and errors are tracked at the end of this file; the detailed build plan is `docs/implementation-plan.md`.
 
 ## 1. Product Goal
 
@@ -2244,3 +2278,76 @@ navigate
 while Rust continues indexing, parsing, hashing, or rendering in the background.
 
 That principle will matter more to the perceived quality of the application than almost any individual UI component.
+
+
+---
+
+# Execution Tracking
+
+## Goal
+
+A signed NSIS installer for Iconarium on GitHub Releases that installs per-user, keeps itself current through the Tauri updater, and delivers every MVP item in §41 with the Windows/Office behaviours in `docs/windows-validation.md` confirmed on a real machine.
+
+## Current Status (2026-10-07)
+
+| Area | State |
+|---|---|
+| MVP (§41) + minimap, save region, region drag-out, watcher, startup restore | Built; 104 core tests, 10 app-shell tests and 72 UI tests pass; 11-scenario real-app E2E passes on Linux |
+| Windows build | Whole workspace type-checks for the Windows target; not yet built or run on Windows |
+| Office/Visio/draw.io paste and drag | Not validated (needs Windows + Office) — `docs/windows-validation.md` |
+| Release engineering | Code complete. Updater key generated, public key committed and Actions secrets set. First CI run failed on formatting (fixed); first tag still to come |
+
+## Phase F — Release engineering (in progress)
+
+- [x] Rename to Iconarium: product name, window title, identifier `com.echozed.iconarium`, crate `iconarium`, binary `iconarium.exe`, logs
+- [x] MIT `LICENSE`; license/author/repository metadata in Cargo and package.json
+- [x] NSIS-only bundle, `installMode: currentUser`, English only, license page, publisher/copyright/descriptions
+- [x] `tauri-plugin-updater` + `tauri-plugin-process`, capabilities `updater:default` + `process:allow-restart`, endpoint `releases/latest/download/latest.json`, `installMode: passive`
+- [x] `createUpdaterArtifacts: true`; `tauri.unsigned.conf.json` for `just build-unsigned`
+- [x] Update UX: launch check (once, after first paint), Updates section in the ⋯ menu, dot on the button, download → "Restart to update"; failures are silent
+- [x] One version in three files: `tools/bump-version.mjs` (`just bump`, `just check-version`)
+- [x] `just updater-key` generates the key in `~/.tauri` and writes only the public key into `tauri.conf.json`
+- [x] GitHub Actions: `ci.yml` (fmt, tsc, clippy -D warnings, tests on windows-latest), `release.yml` (tag → verify → draft release with `latest.json`), `release-dry-run.yml`
+- [x] Run `just updater-key`, commit the public key (done by Eric, 2026-10-07, commit 6aff95a)
+- [x] Add `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` Actions secrets (done by Eric, 2026-10-07)
+- [ ] First green CI run on windows-latest (first run failed on `cargo fmt --check`; fixed, needs a re-push)
+
+## Phase G — Windows validation and first release (pending)
+
+- [ ] `just dev` and `just build-unsigned` on Windows; fix anything the Linux type-check could not catch
+- [ ] Work through `docs/windows-validation.md` (clipboard, region copy, drag-out, WebView2, high-DPI)
+- [ ] Release dry run → install the artifact → `just bump 0.1.0`/tag `v0.1.0` → publish
+- [ ] Updater end-to-end: install v0.1.0, publish v0.1.1, confirm dot → download → restart into 0.1.1 with no UAC prompt and settings/index preserved; confirm offline launch shows no error
+
+## Decisions Made
+
+| Date | Decision | Rationale |
+|---|---|---|
+| 2026-10-06 | Cargo workspace: headless `svg-core` + thin Tauri shell | Core logic testable/benchmarkable without a WebView |
+| 2026-10-06 | In-memory search catalog over SQLite; binary `u32` ID results; summaries fetched per visible page | 50k-asset searches in single-digit ms; trivial selection math in the UI |
+| 2026-10-06 | Thumbnails via async `thumb://` protocol; visible `<img>` requests drive P0 priority | The browser's own lazy loading is the visibility signal |
+| 2026-10-06 | Region crop = text-preserving wrap (new 0,0 canvas + clip + translate around original children) | Keeps text, defs, gradients, CSS; usvg re-serialization would outline text |
+| 2026-10-06 | Frontend behind a `Backend` interface with a mock implementation | UI built, screenshot-tested and demoed without Rust |
+| 2026-10-07 | `maxNestingDepth` (256) and `maxRenderTextChars` (200k) limits; over-limit files stay searchable | Stack overflows and unbounded text layout found by dataset E |
+| 2026-10-07 | Windows clipboard written directly with clipboard-win in one open: SVG → PNG → bitmap → optional text | clipboard-rs re-opened/closed the clipboard for images and dropped the SVG format |
+| 2026-10-07 | `<image href>` restricted to `data:` and relative rasters inside the SVG's folder | Background thumbnailing must not read arbitrary paths or UNC shares |
+| 2026-10-07 | P4 lane: background thumbnails after whole-library analysis | Content search was gated behind thumbnail rendering |
+| 2026-10-07 | `just` as the single entry point; npm (not pnpm) | User request; existing lockfile |
+| 2026-10-07 | Product name **Iconarium**, MIT license, identifier `com.echozed.iconarium` | User request; matches the echozed identifier family |
+| 2026-10-07 | Release flow mirrors Richochet (markdown-converter): NSIS only, per-user, draft releases from `v*` tags, minisign-signed `latest.json`, launch-time check, update UI in the settings menu | User request; proven setup. NSIS only because the updater can only hand off to NSIS and MSI needs elevation |
+| 2026-10-07 | Updater public key left as a placeholder; release workflow refuses to run until it is set | The signing key must be generated by a human and never pass through the repo or an agent transcript |
+
+## Errors Encountered
+
+| Date | Error | Resolution |
+|---|---|---|
+| 2026-10-06 | Initial Tauri build exceeded the 10-minute tool timeout (2-core VM) | Long builds run in the background with polling |
+| 2026-10-06 | `rustup target add x86_64-pc-windows-msvc` blocked by the network allowlist | Built std from source (`-Zbuild-std`, rust-src from GitHub, mingw-w64) to type-check the Windows target |
+| 2026-10-07 | 5,000-level nested `<g>` aborted the process (stack overflow) | Raw-markup depth pre-scan before parsing; 16 MiB worker stacks |
+| 2026-10-07 | 5 MB `<text>` thumbnail: 33 s / out of memory | Render text-volume limits |
+| 2026-10-07 | Watcher rescanned forever on Linux (access events from the scanner itself) | Ignore access events |
+| 2026-10-07 | Pathological tests encoded the pre-fix behaviour | Expectations updated; ignored repro tests turned into regression tests |
+| 2026-10-07 | `just` 1.21 rejects a doc comment between a `[windows]`/`[unix]` attribute and its recipe | Replaced platform-specific recipes with cross-platform Node helpers in `tools/` |
+| 2026-10-07 | Copying a workspace with `cp -r .` stalled on the multi-GB `target/` | Copy only the files needed |
+| 2026-10-07 | First CI run failed at `cargo fmt --check`: a test was edited after the last format pass | `cargo fmt`; run the full `just ci` gate before every hand-off |
+| 2026-10-07 | `git commit -am` reverted the docs/plan.md update (Windows had the file locked, so the working copy was stale) | Replaced the locked file and restored the plan; the stale copy is in `docs/.plan.md.stale` |

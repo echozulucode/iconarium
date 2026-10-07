@@ -194,8 +194,23 @@ issues:
   - id: 18
     date: 2026-10-07
     title: "Updater signing key and GitHub secrets not configured"
-    status: open
-    description: "tauri.conf.json has a placeholder pubkey. release.yml and release-dry-run.yml refuse to run until `just updater-key` is done, the public key is committed and both Actions secrets are set. Human-only: the private key must not pass through the repo or an agent."
-    attempts: []
-    resolution: null
-    lesson: null
+    status: resolved
+    description: "tauri.conf.json had a placeholder pubkey. release.yml and release-dry-run.yml refuse to run until `just updater-key` is done, the public key is committed and both Actions secrets are set. Human-only: the private key must not pass through the repo or an agent."
+    attempts:
+      - date: 2026-10-07
+        action: "Eric ran `just updater-key`, committed the public key (6aff95a) and set both Actions secrets"
+        outcome: "`node tools/set-updater-pubkey.mjs --check` passes"
+    resolution: "Key in ~/.tauri, public key in tauri.conf.json, secrets in GitHub"
+    lesson: "Keep secret generation human-only, but script everything around it (generation, writing the pubkey, and a CI guard)."
+
+  - id: 19
+    date: 2026-10-07
+    title: "First CI run failed at the formatting check"
+    status: resolved
+    description: "CI run 37620355058 (windows-latest) failed in `just check`: `cargo fmt --check` flagged crates/svg-core/tests/index_database.rs, which was edited after the last `cargo fmt`."
+    attempts:
+      - date: 2026-10-07
+        action: "cargo fmt; ran the full `just ci` locally (fmt, tsc, clippy -D warnings, all tests)"
+        outcome: "Green locally; needs a re-push"
+    resolution: "Formatting fixed"
+    lesson: "Run exactly the CI gate (`just ci`) before every hand-off, not a subset."

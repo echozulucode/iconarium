@@ -289,7 +289,10 @@ fn checked_save_skips_stale_fingerprint() {
         file_size: 10,
         mtime_ns: 1,
     };
-    let rec = db.insert_assets(lib.id, std::slice::from_ref(&f)).unwrap().remove(0);
+    let rec = db
+        .insert_assets(lib.id, std::slice::from_ref(&f))
+        .unwrap()
+        .remove(0);
     // File changes before the (old) analysis is saved.
     let changed = DiscoveredFile {
         file_size: 20,

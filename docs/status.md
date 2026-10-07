@@ -3,18 +3,29 @@ type: status
 updated: 2026-10-07
 current_phase: "F — Release engineering"
 blockers:
-  - "Updater signing key not generated yet (human-only step: `just updater-key`)"
-  - "GitHub Actions secrets TAURI_SIGNING_PRIVATE_KEY / _PASSWORD not set"
   - "No Windows machine in the build environment: Windows build, Office paste/drag and WebView2 behaviour unverified"
 next_actions:
+  - "Push the CI fix and confirm the run is green on windows-latest"
+  - "Run the Release dry run workflow; install the artifact on a real machine"
   - "On Windows: `just dev`, then `just build-unsigned` and install the NSIS output"
-  - "Run `just updater-key`, commit the public key, add the two Actions secrets"
-  - "Push and confirm the first CI run is green on windows-latest"
   - "Work through docs/windows-validation.md and record results (issues 16, 17)"
   - "Release dry run → tag v0.1.0 → publish; then v0.1.1 to prove the updater end to end"
 ---
 
 # Status Log
+
+## Session: 2026-10-07 (c) — Signing set up; first CI run
+
+**Phase:** F — Release engineering
+
+**Actions taken:**
+- Eric generated the updater key, committed the public key (6aff95a) and set both Actions secrets. That resolves issue 18.
+- The first CI run (37620355058) failed at `cargo fmt --check`: a test was edited after the last format pass (issue 19). Fixed, and the full `just ci` gate was run locally.
+- 6aff95a also reverted the `docs/plan.md` tracking sections, because Windows had the file locked and `git commit -am` picked up the stale copy. Restored them; the stale copy was moved to `docs/.plan.md.stale`.
+
+**Outcome:** Ready to re-push. Next: confirm a green CI run, then do the release dry run or the first tag.
+
+---
 
 ## Session: 2026-10-07 (b) — Iconarium, MIT, NSIS + auto-update, project docs
 
