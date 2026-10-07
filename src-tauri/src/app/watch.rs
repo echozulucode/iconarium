@@ -35,6 +35,13 @@ impl AppCore {
                 let mut rescan = false;
                 for ev in events {
                     rescan |= ev.need_rescan();
+                    // Access events (inotify IN_OPEN / IN_CLOSE_NOWRITE on Linux) are caused by
+                    // our own reads: the scanner opening directories would classify as
+                    // "structural" and trigger a full reconcile, which opens the directories
+                    // again — an endless rescan loop. Reads never change the library.
+                    if matches!(ev.event.kind, notify::EventKind::Access(_)) {
+                        continue;
+                    }
                     paths.extend(ev.event.paths.iter().cloned());
                 }
                 if rescan {

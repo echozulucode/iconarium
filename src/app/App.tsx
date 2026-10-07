@@ -27,7 +27,10 @@ export function App() {
       b.onCatalogChanged((c) => {
         useLibrary.getState().setTotal(c.total);
         if (c.reason === "load") {
-          // A different library was loaded: start fresh.
+          // A different library was loaded: start fresh. The load may have been started by
+          // the backend (startup restore finishing after get_app_state's bounded wait), so
+          // re-read the app state too or the UI would keep showing "No folder".
+          void useLibrary.getState().refreshAppState();
           useSelection.getState().reset();
           useViewer.getState().close();
           useSearch.getState().reset();
