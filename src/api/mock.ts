@@ -60,6 +60,8 @@ const DEFAULT_SETTINGS: Settings = {
     maxTextNodeChars: 10_000,
     maxExtractedTextBytes: 1024 * 1024,
     maxRenderPixels: 64 * 1024 * 1024,
+    maxNestingDepth: 256,
+    maxRenderTextChars: 200_000,
   },
   thumbnailSize: 256,
   prefillThumbnails: true,

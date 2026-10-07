@@ -36,6 +36,9 @@ struct Failure {
     message: String,
     complexity: Option<Complexity>,
     meta: Option<SvgMeta>,
+    /// Searchable text is still extracted (capped) for over-limit documents, so they
+    /// remain findable even though they are not rendered.
+    text: Option<SearchText>,
 }
 
 impl Failure {
@@ -45,6 +48,7 @@ impl Failure {
             message: message.into(),
             complexity: None,
             meta: None,
+            text: None,
         })
     }
 }
@@ -55,17 +59,21 @@ fn analyze_parsed(
 ) -> Result<(SvgMeta, SearchText, Complexity), Box<Failure>> {
     let decoded = parser::decode_text(bytes).map_err(Failure::parse)?;
     let text: &str = &decoded.text;
-    let doc = parser::parse_xml(text, limits.max_nodes).map_err(|f| match f {
-        parser::ParseFailure::Limit(m) => Box::new(Failure {
-            state: ProcessingState::LimitExceeded,
-            message: m,
-            complexity: Some(Complexity {
-                file_size: bytes.len() as u64,
-                node_count: limits.max_nodes.saturating_add(1),
-                ..Default::default()
-            }),
-            meta: None,
-        }),
+    let doc = parser::parse_xml(text, limits.max_nodes, limits.max_nesting_depth).map_err(|f| match f {
+        parser::ParseFailure::Limit(m) => {
+            let too_many_nodes = m.starts_with("Too many");
+            Box::new(Failure {
+                state: ProcessingState::LimitExceeded,
+                message: m,
+                complexity: Some(Complexity {
+                    file_size: bytes.len() as u64,
+                    node_count: if too_many_nodes { limits.max_nodes.saturating_add(1) } else { 0 },
+                    ..Default::default()
+                }),
+                meta: None,
+                text: None,
+            })
+        }
         parser::ParseFailure::Malformed(m) => Failure::parse(m),
     })?;
     let root = parser::root_svg(&doc).map_err(Failure::parse)?;
@@ -77,6 +85,7 @@ fn analyze_parsed(
             message,
             meta: Some(metadata::extract_meta_with(&doc, root, false)),
             complexity: Some(complexity),
+            text: Some(text_extract::extract_text(&doc, root, limits)),
         }));
     }
     let meta = metadata::extract_meta(&doc, root);
@@ -120,6 +129,7 @@ pub fn analyze(bytes: &[u8], limits: &Limits) -> Analysis {
             analysis.error = Some(f.message);
             analysis.complexity = f.complexity.unwrap_or(base_complexity);
             analysis.meta = f.meta.unwrap_or_default();
+            analysis.text = f.text.unwrap_or_default();
         }
         Err(_) => {
             tracing::error!("panic while analyzing SVG ({} bytes)", bytes.len());

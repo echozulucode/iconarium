@@ -23,6 +23,12 @@ pub struct Limits {
     pub max_extracted_text_bytes: u32,
     /// Max rendered pixels (w*h) for any single PNG export.
     pub max_render_pixels: u64,
+    /// Maximum element nesting depth. Deeply nested documents overflow parser/renderer
+    /// recursion, so they are rejected before parsing.
+    pub max_nesting_depth: u32,
+    /// Maximum total characters inside <text> elements. Text layout cost grows faster
+    /// than linearly, so text-heavy documents are listed but not rendered.
+    pub max_render_text_chars: u64,
 }
 
 impl Default for Limits {
@@ -35,6 +41,8 @@ impl Default for Limits {
             max_text_node_chars: 10_000,
             max_extracted_text_bytes: MB as u32,
             max_render_pixels: 64_000_000,
+            max_nesting_depth: 256,
+            max_render_text_chars: 200_000,
         }
     }
 }

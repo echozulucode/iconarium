@@ -159,11 +159,15 @@ pub struct SvgMeta {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct Complexity {
     pub file_size: u64,
     pub node_count: u32,
     pub embedded_raster_bytes: u64,
+    /// Longest single text run inside a <text> element (characters).
     pub max_text_node_chars: u32,
+    /// Total characters inside <text> elements (drives text layout cost).
+    pub render_text_chars: u64,
     pub has_scripts: bool,
     pub has_external_refs: bool,
 }

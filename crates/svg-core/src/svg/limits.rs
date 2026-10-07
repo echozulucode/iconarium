@@ -64,8 +64,18 @@ pub fn collect_complexity(doc: &Document<'_>, file_len: u64) -> Complexity {
     for node in doc.descendants() {
         nodes += 1;
         if node.is_text() {
-            let chars = node.text().map(|t| t.chars().count()).unwrap_or(0) as u32;
-            c.max_text_node_chars = c.max_text_node_chars.max(chars);
+            // Only text that the renderer lays out counts (not CSS in <style>, scripts, metadata).
+            let in_text_el = node
+                .ancestors()
+                .skip(1)
+                .find(|a| a.is_element())
+                .is_some_and(|p| matches!(p.tag_name().name(), "text" | "tspan" | "textPath" | "a" | "tref"))
+                && node.ancestors().any(|a| a.is_element() && a.tag_name().name() == "text");
+            if in_text_el {
+                let chars = node.text().map(|t| t.chars().count()).unwrap_or(0);
+                c.max_text_node_chars = c.max_text_node_chars.max(chars.min(u32::MAX as usize) as u32);
+                c.render_text_chars = c.render_text_chars.saturating_add(chars as u64);
+            }
             continue;
         }
         if !node.is_element() {
@@ -111,6 +121,20 @@ pub fn check_complexity(c: &Complexity, limits: &Limits) -> LimitResult {
             "Embedded images exceed limit ({} > {})",
             fmt_size(c.embedded_raster_bytes),
             fmt_size(limits.max_embedded_raster_bytes)
+        ));
+    }
+    if c.max_text_node_chars > limits.max_text_node_chars {
+        return Err(format!(
+            "Text run too long to render ({} > {} characters)",
+            group_thousands(c.max_text_node_chars as u64),
+            group_thousands(limits.max_text_node_chars as u64)
+        ));
+    }
+    if c.render_text_chars > limits.max_render_text_chars {
+        return Err(format!(
+            "Too much text to render ({} > {} characters)",
+            group_thousands(c.render_text_chars),
+            group_thousands(limits.max_render_text_chars)
         ));
     }
     Ok(())

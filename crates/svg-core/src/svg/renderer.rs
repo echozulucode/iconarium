@@ -97,7 +97,7 @@ fn failure_to_error(f: ParseFailure) -> CoreError {
 
 /// Apply limits and build a usvg tree from document text.
 fn tree_from_text(text: &str, limits: &Limits, resources_dir: Option<&Path>) -> Result<usvg::Tree> {
-    let doc = parse_xml(text, limits.max_nodes).map_err(failure_to_error)?;
+    let doc = parse_xml(text, limits.max_nodes, limits.max_nesting_depth).map_err(failure_to_error)?;
     let root = root_svg(&doc).map_err(CoreError::Parse)?;
     let complexity = collect_complexity(&doc, text.len() as u64);
     check_complexity(&complexity, limits).map_err(CoreError::Limit)?;
@@ -113,7 +113,7 @@ fn tree_from_text(text: &str, limits: &Limits, resources_dir: Option<&Path>) -> 
         let layout = root_layout(text, root)
             .ok_or_else(|| CoreError::Parse("Cannot locate root element".into()))?;
         let fixed = rewrite_root(text, &layout, &[], &[("xmlns".into(), SVG_NS.into())]);
-        let doc2 = parse_xml(&fixed, limits.max_nodes).map_err(failure_to_error)?;
+        let doc2 = parse_xml(&fixed, limits.max_nodes, limits.max_nesting_depth).map_err(failure_to_error)?;
         build(&doc2)
     } else {
         build(&doc)

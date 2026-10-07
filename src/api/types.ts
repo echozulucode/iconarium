@@ -87,6 +87,8 @@ export interface Limits {
   maxTextNodeChars: number;
   maxExtractedTextBytes: number;
   maxRenderPixels: number;
+  maxNestingDepth: number;
+  maxRenderTextChars: number;
 }
 
 export type ViewerBackground = "checkerboard" | "white" | "dark";

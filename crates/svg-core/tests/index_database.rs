@@ -44,6 +44,7 @@ fn analysis(title: &str, text: &str) -> Analysis {
             node_count: 40,
             embedded_raster_bytes: 0,
             max_text_node_chars: 20,
+            render_text_chars: 20,
             has_scripts: false,
             has_external_refs: true,
         },

@@ -353,9 +353,12 @@ mod svg_text {
             ..Default::default()
         };
         let doc = "<svg xmlns='http://www.w3.org/2000/svg'><title>ééééééééé</title><text>abcdefghij</text></svg>";
-        let t = text(doc, &limits);
-        assert_eq!(t.title, "ééééé");
-        assert_eq!(t.visible_text, "abcde");
+        // A run longer than the per-run limit is not rendered, but its text is still
+        // extracted (truncated) so the file stays searchable.
+        let a = analyze(doc.as_bytes(), &limits);
+        assert_eq!(a.state, ProcessingState::LimitExceeded);
+        assert_eq!(a.text.title, "ééééé");
+        assert_eq!(a.text.visible_text, "abcde");
     }
 
     #[test]

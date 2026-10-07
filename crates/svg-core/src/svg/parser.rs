@@ -106,8 +106,101 @@ pub fn decode_text(bytes: &[u8]) -> Result<DecodedText<'_>, String> {
     }
 }
 
+/// Hard nesting cap for callers that don't carry [`crate::config::Limits`] (crop,
+/// viewer normalization). Parsing alone is safe well beyond this on a 2 MiB stack.
+pub const HARD_MAX_DEPTH: u32 = 1024;
+
+/// Maximum element nesting depth of an XML text, computed by a cheap linear scan of the
+/// raw markup (comments, CDATA, processing instructions, DOCTYPE internal subsets and
+/// quoted attribute values are skipped). Stops early once `stop_above` is exceeded.
+pub fn element_depth(text: &str, stop_above: u32) -> u32 {
+    let b = text.as_bytes();
+    let n = b.len();
+    let mut i = 0usize;
+    let mut depth: u32 = 0;
+    let mut max: u32 = 0;
+    let find = |from: usize, pat: &[u8]| -> usize {
+        memchr::memmem::find(&b[from.min(n)..], pat).map(|p| from + p + pat.len()).unwrap_or(n)
+    };
+    while i < n {
+        let Some(p) = memchr::memchr(b'<', &b[i..]) else { break };
+        i += p + 1;
+        if i >= n {
+            break;
+        }
+        match b[i] {
+            b'!' => {
+                if b[i..].starts_with(b"!--") {
+                    i = find(i + 3, b"-->");
+                } else if b[i..].starts_with(b"![CDATA[") {
+                    i = find(i + 8, b"]]>");
+                } else {
+                    // DOCTYPE / declarations, possibly with an internal subset [...]
+                    let mut bracket = 0i32;
+                    while i < n {
+                        match b[i] {
+                            b'[' => bracket += 1,
+                            b']' => bracket -= 1,
+                            b'>' if bracket <= 0 => {
+                                i += 1;
+                                break;
+                            }
+                            _ => {}
+                        }
+                        i += 1;
+                    }
+                }
+            }
+            b'?' => i = find(i + 1, b"?>"),
+            b'/' => {
+                depth = depth.saturating_sub(1);
+                i = find(i + 1, b">");
+            }
+            _ => {
+                // Start tag: scan to its end, honoring quoted attribute values.
+                let mut quote: u8 = 0;
+                let mut self_closing = false;
+                while i < n {
+                    let c = b[i];
+                    if quote != 0 {
+                        if c == quote {
+                            quote = 0;
+                        }
+                    } else if c == b'"' || c == b'\'' {
+                        quote = c;
+                    } else if c == b'>' {
+                        self_closing = i > 0 && b[i - 1] == b'/';
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+                if !self_closing {
+                    depth += 1;
+                    if depth > max {
+                        max = depth;
+                        if max > stop_above {
+                            return max;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    max
+}
+
 /// Parse XML with DTD support and a node limit (`max_nodes`; one more node fails).
-pub fn parse_xml(text: &str, max_nodes: u32) -> Result<Document<'_>, ParseFailure> {
+/// Documents nested deeper than `max_depth` are rejected *before* parsing, because the
+/// parser and renderer recurse per level and would overflow the thread stack.
+pub fn parse_xml(text: &str, max_nodes: u32, max_depth: u32) -> Result<Document<'_>, ParseFailure> {
+    let depth = element_depth(text, max_depth);
+    if depth > max_depth {
+        return Err(ParseFailure::Limit(format!(
+            "Elements nested too deeply (more than {} levels)",
+            group_thousands(max_depth as u64)
+        )));
+    }
     let opts = ParsingOptions {
         allow_dtd: true,
         nodes_limit: max_nodes.saturating_add(1),
@@ -627,5 +720,21 @@ mod tests {
             b"<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><svg><title>caf\xE9</title></svg>";
         assert!(decode_text(latin).unwrap().text.contains("caf\u{e9}"));
         assert!(decode_text(b"<svg>\xFF</svg>").is_err());
+    }
+}
+
+#[cfg(test)]
+mod depth_tests {
+    use super::*;
+
+    #[test]
+    fn depth_scanner() {
+        assert_eq!(element_depth("<svg/>", 10), 0);
+        assert_eq!(element_depth("<svg><g><g/></g></svg>", 10), 2);
+        assert_eq!(element_depth("<svg><!-- <g><g><g> --><g a='>'>x</g></svg>", 10), 2);
+        assert_eq!(element_depth("<?xml version='1.0'?><!DOCTYPE svg [<!ENTITY a '<g>'>]><svg><![CDATA[<g><g>]]></svg>", 10), 1);
+        let deep = format!("<svg>{}{}</svg>", "<g>".repeat(5000), "</g>".repeat(5000));
+        assert!(element_depth(&deep, 256) > 256);
+        assert!(matches!(parse_xml(&deep, u32::MAX - 1, 256), Err(ParseFailure::Limit(_))));
     }
 }

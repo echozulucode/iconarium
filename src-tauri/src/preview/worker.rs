@@ -70,6 +70,9 @@ pub fn spawn_workers(core: &Arc<AppCore>) {
         let core = core.clone();
         std::thread::Builder::new()
             .name(format!("preview-{i}"))
+            // Defense in depth: parsing/rendering recurse per nesting level. Depth is capped
+            // by Limits::max_nesting_depth, but give workers generous headroom anyway.
+            .stack_size(16 * 1024 * 1024)
             .spawn(move || {
                 while let Some((id, flags, prio)) = core.queue.pop() {
                     let gen = core.generation();

@@ -22,7 +22,7 @@ pub fn prepare_for_viewer<'a>(bytes: &'a [u8], meta: &SvgMeta) -> Cow<'a, [u8]> 
         return Cow::Borrowed(bytes);
     };
     let text: &str = &decoded.text;
-    let Ok(doc) = parse_xml(text, u32::MAX - 1) else {
+    let Ok(doc) = parse_xml(text, u32::MAX - 1, super::parser::HARD_MAX_DEPTH) else {
         return Cow::Borrowed(bytes);
     };
     let Ok(root) = root_svg(&doc) else {
