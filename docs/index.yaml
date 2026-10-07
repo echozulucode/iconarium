@@ -1,0 +1,33 @@
+project: "Iconarium"
+created: 2026-10-06
+updated: 2026-10-07
+docs:
+  - file: docs/plan.md
+    type: plan
+    status: active
+    note: "Original product plan (§1–43) + execution tracking: phases, decisions, errors"
+  - file: docs/status.md
+    type: status
+    status: active
+  - file: docs/research.md
+    type: research
+    status: active
+  - file: docs/issues.yaml
+    type: issues
+    status: active
+  - file: docs/lessons.yaml
+    type: lessons
+    status: active
+  # Reference documentation that predates the tracking set (kept, not tracking docs):
+  - file: docs/implementation-plan.md
+    type: reference
+    status: active
+    note: "Detailed build plan: decisions, contracts, phases A–E, deviations"
+  - file: docs/performance.md
+    type: reference
+    status: active
+    note: "Datasets A–E and measured results vs plan §34"
+  - file: docs/windows-validation.md
+    type: reference
+    status: active
+    note: "Manual Windows/Office checklist (issues 16, 17)"

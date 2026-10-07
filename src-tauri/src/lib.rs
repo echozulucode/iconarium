@@ -17,6 +17,8 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .register_asynchronous_uri_scheme_protocol("thumb", preview::protocol::thumb_handler)
         .register_asynchronous_uri_scheme_protocol("svgfile", preview::protocol::svgfile_handler)
         .setup(|app| {
@@ -25,13 +27,16 @@ pub fn run() {
             let guard = app::logging::init(&paths.log_dir);
             // Keep the log writer alive for the app's lifetime.
             app.manage(LogGuard(guard));
-            tracing::info!("starting SVG Library Browser {}", env!("CARGO_PKG_VERSION"));
+            tracing::info!("starting Iconarium {}", env!("CARGO_PKG_VERSION"));
 
             let db = match Database::open(&paths.db_path) {
                 Ok(db) => db,
                 Err(e) => {
                     // A corrupt index must never prevent startup: move it aside and rebuild.
-                    tracing::error!("opening index {} failed ({e}); recreating", paths.db_path.display());
+                    tracing::error!(
+                        "opening index {} failed ({e}); recreating",
+                        paths.db_path.display()
+                    );
                     let backup = paths.db_path.with_extension("corrupt");
                     let _ = std::fs::rename(&paths.db_path, backup);
                     Database::open(&paths.db_path)?
@@ -70,7 +75,7 @@ pub fn run() {
             commands::viewer::open_external,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building SVG Library Browser");
+        .expect("error while building Iconarium");
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {

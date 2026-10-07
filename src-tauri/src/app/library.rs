@@ -18,9 +18,16 @@ use svg_core::model::{AssetId, AssetRecord, LibraryId, LibraryInfo, ProcessingSt
 fn normalize_root(path: &str) -> CmdResult<PathBuf> {
     let trimmed = path.trim();
     let trimmed = trimmed.trim_end_matches(['/', '\\']);
-    let p = if trimmed.is_empty() || trimmed.ends_with(':') { PathBuf::from(path.trim()) } else { PathBuf::from(trimmed) };
+    let p = if trimmed.is_empty() || trimmed.ends_with(':') {
+        PathBuf::from(path.trim())
+    } else {
+        PathBuf::from(trimmed)
+    };
     if !p.is_dir() {
-        return Err(CmdError::new("not_found", format!("Folder not found: {}", p.display())));
+        return Err(CmdError::new(
+            "not_found",
+            format!("Folder not found: {}", p.display()),
+        ));
     }
     Ok(p)
 }
@@ -61,18 +68,34 @@ impl AppCore {
             let mut cat = self.catalog.write();
             cat.clear();
             cat.extend(items);
-            *self.active.write() = Some(ActiveLibrary { info: info.clone(), root: root.clone() });
+            *self.active.write() = Some(ActiveLibrary {
+                info: info.clone(),
+                root: root.clone(),
+            });
         }
         self.processed.store(0, Ordering::Relaxed);
         self.events.update_status(|s| {
-            s.phase = if total > 0 { ScanPhase::Reconciling } else { ScanPhase::Discovering };
+            s.phase = if total > 0 {
+                ScanPhase::Reconciling
+            } else {
+                ScanPhase::Discovering
+            };
             s.discovered = total;
             s.processed = 0;
             s.total = total;
-            s.message = if total > 0 { "Checking for changes…".into() } else { "Scanning…".into() };
+            s.message = if total > 0 {
+                "Checking for changes…".into()
+            } else {
+                "Scanning…".into()
+            };
         });
         self.events.emit_load_now(total);
-        tracing::info!("opened library {} ({} cached assets) in {:?}", root.display(), total, t0.elapsed());
+        tracing::info!(
+            "opened library {} ({} cached assets) in {:?}",
+            root.display(),
+            total,
+            t0.elapsed()
+        );
 
         let cancel = Arc::new(AtomicBool::new(false));
         *self.scan_cancel.lock() = cancel.clone();
@@ -104,19 +127,32 @@ impl AppCore {
     }
 
     /// Progressive discovery + reconciliation against the persisted index.
-    pub(crate) fn run_scan(self: &Arc<Self>, lib_id: LibraryId, root: &Path, cancel: &AtomicBool, first_scan: bool, gen: u64) {
+    pub(crate) fn run_scan(
+        self: &Arc<Self>,
+        lib_id: LibraryId,
+        root: &Path,
+        cancel: &AtomicBool,
+        first_scan: bool,
+        gen: u64,
+    ) {
         if self.generation() != gen {
             return;
         }
         self.scan_gen.store(gen, Ordering::SeqCst);
         let t0 = Instant::now();
         let settings = self.settings();
-        let opts = ScanOptions { batch_size: settings.scan_batch_size, ignore_hidden: settings.ignore_hidden, follow_links: false };
+        let opts = ScanOptions {
+            batch_size: settings.scan_batch_size,
+            ignore_hidden: settings.ignore_hidden,
+            follow_links: false,
+        };
         let snapshot = match self.db.lock().library_snapshot(lib_id) {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("snapshot failed: {e}");
-                let _ = self.scan_gen.compare_exchange(gen, 0, Ordering::SeqCst, Ordering::SeqCst);
+                let _ = self
+                    .scan_gen
+                    .compare_exchange(gen, 0, Ordering::SeqCst, Ordering::SeqCst);
                 return;
             }
         };
@@ -124,7 +160,11 @@ impl AppCore {
         let mut discovered = 0usize;
         let thumbs_dir = self.paths.thumbs_dir.clone();
         let thumb_size = settings.thumbnail_size;
-        let phase = if first_scan { ScanPhase::Discovering } else { ScanPhase::Reconciling };
+        let phase = if first_scan {
+            ScanPhase::Discovering
+        } else {
+            ScanPhase::Reconciling
+        };
 
         let result = scanner::scan(root, &opts, cancel, |batch| {
             if self.generation() != gen {
@@ -142,7 +182,12 @@ impl AppCore {
                     });
                     let old_fps: Vec<(AssetId, String)> = {
                         let cat = self.catalog.read();
-                        diff.changed.iter().filter_map(|(id, _)| cat.get(*id).map(|r| (*id, r.fast_fingerprint.clone()))).collect()
+                        diff.changed
+                            .iter()
+                            .filter_map(|(id, _)| {
+                                cat.get(*id).map(|r| (*id, r.fast_fingerprint.clone()))
+                            })
+                            .collect()
                     };
                     let changed_recs = db.update_changed(&diff.changed).unwrap_or_else(|e| {
                         tracing::error!("update_changed: {e}");
@@ -166,7 +211,11 @@ impl AppCore {
                 self.events.set_total(cat.len());
             }
             if !changed_ids.is_empty() {
-                let flags = if settings.prefill_thumbnails { JobFlags::BOTH } else { JobFlags::ANALYZE };
+                let flags = if settings.prefill_thumbnails {
+                    JobFlags::BOTH
+                } else {
+                    JobFlags::ANALYZE
+                };
                 self.queue.push_many(changed_ids, P3, flags);
                 self.events.catalog_changed(ChangeReason::Scan);
             }
@@ -190,7 +239,10 @@ impl AppCore {
                 if !removed.is_empty() {
                     self.remove_assets(&removed, gen);
                 }
-                let _ = self.db.lock().set_library_scanned(lib_id, crate::util::unix_now());
+                let _ = self
+                    .db
+                    .lock()
+                    .set_library_scanned(lib_id, crate::util::unix_now());
                 tracing::info!(
                     "scan of {} finished: {} files, {} removed, {} errors in {:?}",
                     root.display(),
@@ -210,7 +262,9 @@ impl AppCore {
                 });
             }
         }
-        let _ = self.scan_gen.compare_exchange(gen, 0, Ordering::SeqCst, Ordering::SeqCst);
+        let _ = self
+            .scan_gen
+            .compare_exchange(gen, 0, Ordering::SeqCst, Ordering::SeqCst);
         if !cancelled {
             let remaining = self.queue.len();
             let total = self.catalog.read().len();
@@ -230,7 +284,11 @@ impl AppCore {
     fn enqueue_background(&self, lib_id: LibraryId) {
         let pending = self.db.lock().pending_analysis(lib_id).unwrap_or_default();
         let settings = self.settings();
-        let flags = if settings.prefill_thumbnails { JobFlags::BOTH } else { JobFlags::ANALYZE };
+        let flags = if settings.prefill_thumbnails {
+            JobFlags::BOTH
+        } else {
+            JobFlags::ANALYZE
+        };
         self.queue.push_many(pending, P3, flags);
         if settings.prefill_thumbnails {
             let size = settings.thumbnail_size;
@@ -244,7 +302,9 @@ impl AppCore {
             };
             let missing = candidates
                 .into_iter()
-                .filter(|(id, fp)| !cache::thumb_path(&self.paths.thumbs_dir, *id, fp, size).exists())
+                .filter(|(id, fp)| {
+                    !cache::thumb_path(&self.paths.thumbs_dir, *id, fp, size).exists()
+                })
                 .map(|(id, _)| id);
             self.queue.push_many(missing, P4, JobFlags::THUMB);
         }
@@ -263,7 +323,10 @@ impl AppCore {
             if self.generation() != gen {
                 return;
             }
-            let stale = ids.iter().filter_map(|&id| cat.get(id).map(|r| (id, r.fast_fingerprint.clone()))).collect();
+            let stale = ids
+                .iter()
+                .filter_map(|&id| cat.get(id).map(|r| (id, r.fast_fingerprint.clone())))
+                .collect();
             for &id in ids {
                 cat.remove(id);
             }
@@ -291,7 +354,13 @@ impl AppCore {
     }
 
     /// Apply watcher-reported changes for individual relative paths.
-    pub(crate) fn apply_path_changes(&self, lib_id: LibraryId, root: &Path, rel_paths: &[String], gen: u64) {
+    pub(crate) fn apply_path_changes(
+        &self,
+        lib_id: LibraryId,
+        root: &Path,
+        rel_paths: &[String],
+        gen: u64,
+    ) {
         if self.generation() != gen {
             return;
         }
@@ -303,13 +372,22 @@ impl AppCore {
             let existing = self.db.lock().get_asset_by_path(lib_id, rel).ok().flatten();
             match (scanner::stat_one(root, rel), existing) {
                 (Some(df), None) => {
-                    if let Ok(mut recs) = self.db.lock().insert_assets(lib_id, std::slice::from_ref(&df)) {
+                    if let Ok(mut recs) = self
+                        .db
+                        .lock()
+                        .insert_assets(lib_id, std::slice::from_ref(&df))
+                    {
                         touched.append(&mut recs);
                     }
                 }
                 (Some(df), Some(old)) => {
                     if df.file_size != old.file_size || df.mtime_ns != old.mtime_ns {
-                        cache::remove_thumb(&self.paths.thumbs_dir, old.id, &old.fast_fingerprint, size);
+                        cache::remove_thumb(
+                            &self.paths.thumbs_dir,
+                            old.id,
+                            &old.fast_fingerprint,
+                            size,
+                        );
                         if let Ok(mut recs) = self.db.lock().update_changed(&[(old.id, df)]) {
                             touched.append(&mut recs);
                         }

@@ -59,23 +59,30 @@ fn analyze_parsed(
 ) -> Result<(SvgMeta, SearchText, Complexity), Box<Failure>> {
     let decoded = parser::decode_text(bytes).map_err(Failure::parse)?;
     let text: &str = &decoded.text;
-    let doc = parser::parse_xml(text, limits.max_nodes, limits.max_nesting_depth).map_err(|f| match f {
-        parser::ParseFailure::Limit(m) => {
-            let too_many_nodes = m.starts_with("Too many");
-            Box::new(Failure {
-                state: ProcessingState::LimitExceeded,
-                message: m,
-                complexity: Some(Complexity {
-                    file_size: bytes.len() as u64,
-                    node_count: if too_many_nodes { limits.max_nodes.saturating_add(1) } else { 0 },
-                    ..Default::default()
-                }),
-                meta: None,
-                text: None,
-            })
-        }
-        parser::ParseFailure::Malformed(m) => Failure::parse(m),
-    })?;
+    let doc =
+        parser::parse_xml(text, limits.max_nodes, limits.max_nesting_depth).map_err(
+            |f| match f {
+                parser::ParseFailure::Limit(m) => {
+                    let too_many_nodes = m.starts_with("Too many");
+                    Box::new(Failure {
+                        state: ProcessingState::LimitExceeded,
+                        message: m,
+                        complexity: Some(Complexity {
+                            file_size: bytes.len() as u64,
+                            node_count: if too_many_nodes {
+                                limits.max_nodes.saturating_add(1)
+                            } else {
+                                0
+                            },
+                            ..Default::default()
+                        }),
+                        meta: None,
+                        text: None,
+                    })
+                }
+                parser::ParseFailure::Malformed(m) => Failure::parse(m),
+            },
+        )?;
     let root = parser::root_svg(&doc).map_err(Failure::parse)?;
 
     let complexity = limits::collect_complexity(&doc, bytes.len() as u64);

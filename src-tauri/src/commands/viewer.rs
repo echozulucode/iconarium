@@ -33,26 +33,56 @@ pub async fn save_region(
         let (rec, path) = core.locate(id)?;
         let bytes = core.read_asset_bytes(&rec, &path)?;
         let (ext, label, data) = match format {
-            RegionSaveFormat::Svg => ("svg", "SVG image", svg_core::svg::crop::crop_svg(&bytes, region)?.into_bytes()),
+            RegionSaveFormat::Svg => (
+                "svg",
+                "SVG image",
+                svg_core::svg::crop::crop_svg(&bytes, region)?.into_bytes(),
+            ),
             RegionSaveFormat::Png => {
                 let limits = core.settings.read().limits.clone();
-                ("png", "PNG image", render_region_png(&bytes, region, 1.0, Background::Transparent, &limits, path.parent())?.png)
+                (
+                    "png",
+                    "PNG image",
+                    render_region_png(
+                        &bytes,
+                        region,
+                        1.0,
+                        Background::Transparent,
+                        &limits,
+                        path.parent(),
+                    )?
+                    .png,
+                )
             }
         };
         let default_name = format!("{}-crop.{ext}", crate::util::file_stem(&rec.filename));
-        let mut dialog = app.dialog().file().set_title("Save Selection").set_file_name(&default_name).add_filter(label, &[ext]);
+        let mut dialog = app
+            .dialog()
+            .file()
+            .set_title("Save Selection")
+            .set_file_name(&default_name)
+            .add_filter(label, &[ext]);
         if let Some(dir) = path.parent() {
             dialog = dialog.set_directory(dir);
         }
-        let Some(target) = dialog.blocking_save_file() else { return Ok(None) };
-        let target = target.into_path().map_err(|e| CmdError::new("invalid_input", e.to_string()))?;
+        let Some(target) = dialog.blocking_save_file() else {
+            return Ok(None);
+        };
+        let target = target
+            .into_path()
+            .map_err(|e| CmdError::new("invalid_input", e.to_string()))?;
         let same = if cfg!(windows) {
-            target.to_string_lossy().eq_ignore_ascii_case(&path.to_string_lossy())
+            target
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&path.to_string_lossy())
         } else {
             target == path
         };
         if same {
-            return Err(CmdError::new("invalid_input", "Refusing to overwrite the source SVG"));
+            return Err(CmdError::new(
+                "invalid_input",
+                "Refusing to overwrite the source SVG",
+            ));
         }
         std::fs::write(&target, data)?;
         Ok(Some(target.to_string_lossy().into_owned()))
@@ -61,7 +91,11 @@ pub async fn save_region(
 }
 
 #[tauri::command]
-pub async fn reveal_assets(app: AppHandle, core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>) -> CmdResult<()> {
+pub async fn reveal_assets(
+    app: AppHandle,
+    core: State<'_, Arc<AppCore>>,
+    ids: Vec<AssetId>,
+) -> CmdResult<()> {
     let core = core.inner().clone();
     blocking(move || {
         let mut paths = Vec::new();
@@ -71,13 +105,19 @@ pub async fn reveal_assets(app: AppHandle, core: State<'_, Arc<AppCore>>, ids: V
         if paths.is_empty() {
             return Ok(());
         }
-        app.opener().reveal_items_in_dir(paths).map_err(|e| CmdError::new("opener", e.to_string()))
+        app.opener()
+            .reveal_items_in_dir(paths)
+            .map_err(|e| CmdError::new("opener", e.to_string()))
     })
     .await
 }
 
 #[tauri::command]
-pub async fn open_external(app: AppHandle, core: State<'_, Arc<AppCore>>, id: AssetId) -> CmdResult<()> {
+pub async fn open_external(
+    app: AppHandle,
+    core: State<'_, Arc<AppCore>>,
+    id: AssetId,
+) -> CmdResult<()> {
     let core = core.inner().clone();
     blocking(move || {
         let (_, path) = core.locate(id)?;

@@ -69,11 +69,20 @@ pub fn collect_complexity(doc: &Document<'_>, file_len: u64) -> Complexity {
                 .ancestors()
                 .skip(1)
                 .find(|a| a.is_element())
-                .is_some_and(|p| matches!(p.tag_name().name(), "text" | "tspan" | "textPath" | "a" | "tref"))
-                && node.ancestors().any(|a| a.is_element() && a.tag_name().name() == "text");
+                .is_some_and(|p| {
+                    matches!(
+                        p.tag_name().name(),
+                        "text" | "tspan" | "textPath" | "a" | "tref"
+                    )
+                })
+                && node
+                    .ancestors()
+                    .any(|a| a.is_element() && a.tag_name().name() == "text");
             if in_text_el {
                 let chars = node.text().map(|t| t.chars().count()).unwrap_or(0);
-                c.max_text_node_chars = c.max_text_node_chars.max(chars.min(u32::MAX as usize) as u32);
+                c.max_text_node_chars = c
+                    .max_text_node_chars
+                    .max(chars.min(u32::MAX as usize) as u32);
                 c.render_text_chars = c.render_text_chars.saturating_add(chars as u64);
             }
             continue;

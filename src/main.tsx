@@ -20,7 +20,7 @@ getBackend()
     console.error(e);
     root.render(
       <div style={{ padding: 24, fontSize: 13 }}>
-        <strong>SVG Library Browser couldn't start.</strong>
+        <strong>Iconarium couldn't start.</strong>
         <pre style={{ whiteSpace: "pre-wrap" }}>{String(e)}</pre>
       </div>,
     );

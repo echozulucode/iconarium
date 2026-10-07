@@ -17,16 +17,31 @@ use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{Manager, UriSchemeContext, UriSchemeResponder};
 
 fn parse_id(req: &Request<Vec<u8>>) -> Option<AssetId> {
-    req.uri().path().trim_start_matches('/').split('/').next()?.parse().ok()
+    req.uri()
+        .path()
+        .trim_start_matches('/')
+        .split('/')
+        .next()?
+        .parse()
+        .ok()
 }
 
 fn core_of<R: tauri::Runtime>(ctx: &UriSchemeContext<'_, R>) -> Option<Arc<AppCore>> {
-    ctx.app_handle().try_state::<Arc<AppCore>>().map(|s| s.inner().clone())
+    ctx.app_handle()
+        .try_state::<Arc<AppCore>>()
+        .map(|s| s.inner().clone())
 }
 
-pub fn thumb_handler<R: tauri::Runtime>(ctx: UriSchemeContext<'_, R>, req: Request<Vec<u8>>, responder: UriSchemeResponder) {
+pub fn thumb_handler<R: tauri::Runtime>(
+    ctx: UriSchemeContext<'_, R>,
+    req: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
     let (Some(core), Some(id)) = (core_of(&ctx), parse_id(&req)) else {
-        responder.respond(error_response(StatusCode::BAD_REQUEST, "bad thumbnail request"));
+        responder.respond(error_response(
+            StatusCode::BAD_REQUEST,
+            "bad thumbnail request",
+        ));
         return;
     };
     tauri::async_runtime::spawn_blocking(move || serve_thumb(&core, id, responder));
@@ -40,7 +55,8 @@ fn serve_thumb(core: &AppCore, id: AssetId, responder: UriSchemeResponder) {
     match rec.state {
         ProcessingState::Ready => {
             let size = core.settings.read().thumbnail_size;
-            let path = super::cache::thumb_path(&core.paths.thumbs_dir, id, &rec.fast_fingerprint, size);
+            let path =
+                super::cache::thumb_path(&core.paths.thumbs_dir, id, &rec.fast_fingerprint, size);
             if let Ok(png) = std::fs::read(&path) {
                 responder.respond(png_response(png));
                 return;
@@ -52,11 +68,18 @@ fn serve_thumb(core: &AppCore, id: AssetId, responder: UriSchemeResponder) {
             core.waiters.lock().entry(id).or_default().push(responder);
             core.queue.push(id, P0, JobFlags::BOTH);
         }
-        other => responder.respond(error_response(StatusCode::UNPROCESSABLE_ENTITY, other.as_str())),
+        other => responder.respond(error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            other.as_str(),
+        )),
     }
 }
 
-pub fn svgfile_handler<R: tauri::Runtime>(ctx: UriSchemeContext<'_, R>, req: Request<Vec<u8>>, responder: UriSchemeResponder) {
+pub fn svgfile_handler<R: tauri::Runtime>(
+    ctx: UriSchemeContext<'_, R>,
+    req: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
     let (Some(core), Some(id)) = (core_of(&ctx), parse_id(&req)) else {
         responder.respond(error_response(StatusCode::BAD_REQUEST, "bad svg request"));
         return;
@@ -65,7 +88,11 @@ pub fn svgfile_handler<R: tauri::Runtime>(ctx: UriSchemeContext<'_, R>, req: Req
         let resp = match serve_svg(&core, id) {
             Ok(r) => r,
             Err(e) => error_response(
-                if e.kind == "not_found" { StatusCode::NOT_FOUND } else { StatusCode::UNPROCESSABLE_ENTITY },
+                if e.kind == "not_found" {
+                    StatusCode::NOT_FOUND
+                } else {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                },
                 &e.message,
             ),
         };
@@ -78,10 +105,13 @@ fn serve_svg(core: &AppCore, id: AssetId) -> Result<Response<Vec<u8>>, crate::er
     if !rec.state.renderable() {
         return Err(crate::error::CmdError::new(
             "limit_exceeded",
-            rec.parse_error.unwrap_or_else(|| "Preview unavailable".into()),
+            rec.parse_error
+                .unwrap_or_else(|| "Preview unavailable".into()),
         ));
     }
-    let path = core.absolute_path(&rec).ok_or_else(crate::error::CmdError::no_library)?;
+    let path = core
+        .absolute_path(&rec)
+        .ok_or_else(crate::error::CmdError::no_library)?;
     let bytes = core.read_asset_bytes(&rec, &path)?;
     let body = svg_core::svg::normalize::prepare_for_viewer(&bytes, &meta).into_owned();
     Ok(Response::builder()

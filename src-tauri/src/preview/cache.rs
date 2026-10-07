@@ -10,7 +10,8 @@ pub fn cache_key(fingerprint: &str, size: u32) -> String {
 }
 
 pub fn thumb_path(dir: &Path, id: AssetId, fingerprint: &str, size: u32) -> PathBuf {
-    dir.join(format!("{:02x}", id % 256)).join(format!("{id}-{}.png", cache_key(fingerprint, size)))
+    dir.join(format!("{:02x}", id % 256))
+        .join(format!("{id}-{}.png", cache_key(fingerprint, size)))
 }
 
 /// Atomically write a thumbnail (write temp + rename) so readers never see partial files.
@@ -25,7 +26,11 @@ pub fn write_thumb(path: &Path, png: &[u8]) -> std::io::Result<()> {
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
             // Another worker may have won the race; that's fine if the target exists.
-            if path.exists() { Ok(()) } else { Err(e) }
+            if path.exists() {
+                Ok(())
+            } else {
+                Err(e)
+            }
         }
     }
 }

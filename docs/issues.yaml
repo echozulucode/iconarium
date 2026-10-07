@@ -1,0 +1,201 @@
+# Issue log — bugs, blockers and their resolutions. Resolved issues feed docs/lessons.yaml.
+issues:
+  - id: 1
+    date: 2026-10-07
+    title: "Deeply nested groups crash the process (stack overflow)"
+    status: resolved
+    description: |
+      5,000 nested <g> overflowed roxmltree's recursion on a 2 MiB thread; 600–1,020 levels
+      overflowed usvg's tree builder in release builds. A stack overflow cannot be caught, so
+      one such file in a library would kill the app. Found by dataset E.
+    attempts:
+      - date: 2026-10-07
+        action: "Raw-markup depth pre-scan (element_depth) before parsing; Limits.max_nesting_depth = 256; HARD_MAX_DEPTH = 1024 for crop/normalize; 16 MiB preview worker stacks"
+        outcome: "LimitExceeded on 2 MiB threads up to 100,000 levels, in debug and release"
+    resolution: "Depth limit enforced before any recursive parser runs; regression tests in tests/pathological.rs"
+    lesson: "Guard recursion depth on raw input before handing it to recursive parsers; catch_unwind does not cover stack overflow."
+
+  - id: 2
+    date: 2026-10-07
+    title: "Large <text> makes rendering unbounded (minutes / GBs)"
+    status: resolved
+    description: |
+      A 200 KB <text> run took 14.6 s; 5 MB of text took 33 s and 2.7 GB, or ran out of memory.
+      analyze() reported these files as Ready, so the app would try to thumbnail them.
+    attempts:
+      - date: 2026-10-07
+        action: "Count characters inside <text> elements; enforce per-run (10k) and total (200k) limits"
+        outcome: "Rejected in 10–26 ms; text is still extracted (capped), so the file stays searchable"
+    resolution: "Limits.max_render_text_chars + per-run cap in check_complexity"
+    lesson: "Measure cost drivers, not just size: layout cost grows super-linearly with text even when the file is small."
+
+  - id: 3
+    date: 2026-10-07
+    title: "Copy SVG on Windows put only a bitmap on the clipboard"
+    status: resolved
+    description: |
+      clipboard-rs set() handles an Image by re-opening and emptying the clipboard, and closes it
+      on return. The later image/svg+xml and PNG writes then failed silently. PowerPoint would only
+      ever paste a raster. Found by the independent review.
+    attempts:
+      - date: 2026-10-07
+        action: "Write all formats with clipboard-win in one open/empty/close cycle: image/svg+xml → PNG → CF_BITMAP → optional text"
+        outcome: "Type-checks for the Windows target; needs Office validation (issue 16)"
+    resolution: "native/clipboard.rs uses clipboard-win on Windows, clipboard-rs elsewhere"
+    lesson: "Read the platform implementation of a cross-platform clipboard crate before trusting multi-format writes."
+
+  - id: 4
+    date: 2026-10-07
+    title: "Thumbnailing followed <image href> to any path, including UNC shares"
+    status: resolved
+    description: "usvg's default resolver reads absolute paths, `..` escapes and \\\\host\\share paths. On Windows that can leak NTLM hashes during background prefill."
+    attempts:
+      - date: 2026-10-07
+        action: "Custom ImageHrefResolver: data: URIs, plus relative raster files inside the SVG's folder (≤ 20 MB)"
+        outcome: "Policy unit-tested"
+    resolution: "svg::renderer::safe_href_resolver"
+    lesson: "Renderer defaults are tuned for trusted input; a file browser renders untrusted files unattended."
+
+  - id: 5
+    date: 2026-10-07
+    title: "Library switch mid-scan could mix two libraries in one catalog"
+    status: resolved
+    description: "open_library was not serialized. The cancel flag was set before the generation bump, so a final scan batch could land in the new library's catalog."
+    attempts:
+      - date: 2026-10-07
+        action: "Serialize switches; bump the generation first; re-check it under the catalog write lock; tie scan and watcher to a generation"
+        outcome: "E2E restart, watcher and library-switch scenarios pass"
+    resolution: "app/library.rs generation discipline"
+    lesson: "Invalidate (bump the generation) before cancelling, and re-check under the same lock that guards the swap."
+
+  - id: 6
+    date: 2026-10-07
+    title: "Stale analysis could overwrite metadata of a file edited mid-analysis"
+    status: resolved
+    description: "The DB write matched on id only, so a file changed during analysis kept old dimensions and text across restarts."
+    attempts:
+      - date: 2026-10-07
+        action: "Database::save_analyses_checked with AND fast_fingerprint = ?"
+        outcome: "Regression test passes"
+    resolution: "Fingerprint-checked persistence"
+    lesson: "Async results need the version they were computed for, checked at write time."
+
+  - id: 7
+    date: 2026-10-07
+    title: "Watcher rescanned forever on Linux"
+    status: resolved
+    description: "inotify access events from the scanner itself triggered full reconciles in a loop."
+    attempts:
+      - date: 2026-10-07
+        action: "Ignore access events"
+        outcome: "Found and fixed by the E2E run"
+    resolution: "app/watch.rs filters EventKind::Access"
+    lesson: "A watcher must ignore events its own reads cause."
+
+  - id: 8
+    date: 2026-10-07
+    title: "Content search incomplete for minutes on large diagram libraries"
+    status: resolved
+    description: "Analysis of a file was tied to rendering its thumbnail. 10k diagrams took about 17 min on one worker before content search was complete."
+    attempts:
+      - date: 2026-10-07
+        action: "P4 lane: analyse the whole library first, prefill thumbnails afterwards"
+        outcome: "About 50 files/s analysed on 1 worker in E2E (about 3.5 min for 10k)"
+    resolution: "preview/queue.rs P4 + worker deferral"
+    lesson: "Order background work by what unblocks the user (searchability) rather than by file order."
+
+  - id: 9
+    date: 2026-10-07
+    title: "Regex '^' anchors missed filenames in subfolders"
+    status: resolved
+    description: "The regex prefilter ran over joined fields where the filename is a suffix of the path line."
+    attempts:
+      - date: 2026-10-07
+        action: "Skip the prefilter for '^'-anchored patterns"
+        outcome: "re:^thermometer- finds 9 of 9"
+    resolution: "search/ranking.rs"
+    lesson: "Prefilters must be strictly conservative; test them with anchored patterns."
+
+  - id: 10
+    date: 2026-10-07
+    title: "UI stuck on 'No folder' when the startup restore took longer than 3 s"
+    status: resolved
+    description: "get_app_state's bounded wait expired and the later 'load' event did not refresh the library info."
+    attempts:
+      - date: 2026-10-07
+        action: "Refresh app state on catalog://changed with reason 'load'"
+        outcome: "Fixed by the E2E agent"
+    resolution: "src/app/App.tsx"
+    lesson: "Any bounded wait needs an event-driven catch-up path."
+
+  - id: 11
+    date: 2026-10-07
+    title: "Root-level transform attribute is not compensated in crops"
+    status: open
+    description: "A transform on the outermost <svg> (SVG 2) wraps the translated content, so the crop is misplaced. Rare in practice."
+    attempts: []
+    resolution: null
+    lesson: null
+
+  - id: 12
+    date: 2026-10-07
+    title: "Search does not normalize Unicode (NFC/NFD)"
+    status: open
+    description: "'café' typed in NFC does not match a filename stored in NFD (common for files from macOS)."
+    attempts: []
+    resolution: null
+    lesson: null
+
+  - id: 13
+    date: 2026-10-07
+    title: "Some documents analyze as Ready but fail to render"
+    status: open
+    description: "A self-referencing <use>, a <use> fan-out bomb or a zero-size document shows an error tile instead of a thumbnail. Also, linked .svg images are not rendered (by policy)."
+    attempts: []
+    resolution: null
+    lesson: null
+
+  - id: 14
+    date: 2026-10-07
+    title: "Diagram thumbnails and region copy miss the §34 targets on the build VM"
+    status: open
+    description: "Text-heavy diagrams: about 115 ms per thumbnail (the first 40 tiles take about 2.4 s against a 1 s target); region copy about 330 ms against 200 ms. The VM lacks common fonts, and naming an installed font gave 43 ms. Re-measure on Windows."
+    attempts: []
+    resolution: null
+    lesson: null
+
+  - id: 15
+    date: 2026-10-07
+    title: "Linux-only: each clipboard copy leaks a thread and an X connection"
+    status: open
+    description: "clipboard-rs creates a context per call. Windows uses clipboard-win and is unaffected. Low priority (Linux is dev/E2E only)."
+    attempts: []
+    resolution: null
+    lesson: null
+
+  - id: 16
+    date: 2026-10-07
+    title: "Office/Visio/draw.io paste and drag-out not validated"
+    status: open
+    description: "Requires Windows + Office. Checklist: docs/windows-validation.md sections A–C."
+    attempts: []
+    resolution: null
+    lesson: null
+
+  - id: 17
+    date: 2026-10-07
+    title: "No real Windows build or run yet"
+    status: open
+    description: "The workspace type-checks for x86_64-pc-windows-gnu via -Zbuild-std. MSVC link, WebView2 runtime behaviour, high-DPI and the NSIS installer are unverified."
+    attempts: []
+    resolution: null
+    lesson: null
+
+  - id: 18
+    date: 2026-10-07
+    title: "Updater signing key and GitHub secrets not configured"
+    status: open
+    description: "tauri.conf.json has a placeholder pubkey. release.yml and release-dry-run.yml refuse to run until `just updater-key` is done, the public key is committed and both Actions secrets are set. Human-only: the private key must not pass through the repo or an agent."
+    attempts: []
+    resolution: null
+    lesson: null

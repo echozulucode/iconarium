@@ -4,7 +4,7 @@
 //   xvfb-run -a -s "-screen 0 1280x900x24" node scripts/e2e/run.mjs [options]
 //
 // Options:
-//   --bin <path>        app binary (default target/release/svg-library-browser, else target/debug/…)
+//   --bin <path>        app binary (default target/release/iconarium, else target/debug/…)
 //   --home <dir>        isolated HOME for the app (default /tmp/e2e-home; wiped at start)
 //   --work <dir>        scratch dir for the mutable copy of dataset A (default /tmp/e2e-work)
 //   --skip <ids>        comma-separated scenario ids to skip (e.g. 9 to skip the 50k dataset)
@@ -29,7 +29,7 @@ const idList = (s) => new Set((s ?? "").split(",").map((x) => x.trim()).filter(B
 const BIN = resolve(
   arg(
     "--bin",
-    [join(ROOT, "target/release/svg-library-browser"), join(ROOT, "target/debug/svg-library-browser")].find((p) => existsSync(p)) ?? "",
+    [join(ROOT, "target/release/iconarium"), join(ROOT, "target/debug/iconarium")].find((p) => existsSync(p)) ?? "",
   ),
 );
 const HOME = resolve(arg("--home", "/tmp/e2e-home"));
@@ -39,7 +39,7 @@ const JSON_OUT = arg("--json", null);
 const SKIP = idList(arg("--skip", ""));
 const ONLY = idList(arg("--only", ""));
 const DATA = join(ROOT, "datasets");
-const IDENT = "com.svglibrary.browser";
+const IDENT = "com.echozed.iconarium";
 const PORT = 4444;
 
 if (!existsSync(BIN)) throw new Error(`app binary not found: ${BIN} (build it first, see README)`);

@@ -1,7 +1,18 @@
 {
-  "name": "svg-library-browser",
+  "name": "iconarium",
   "private": true,
   "version": "0.1.0",
+  "description": "Iconarium — a fast desktop browser for large SVG libraries: search, preview, crop and copy into your documents.",
+  "license": "MIT",
+  "author": "Eric Zimmerman",
+  "homepage": "https://github.com/echozulucode/iconarium",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/echozulucode/iconarium.git"
+  },
+  "bugs": {
+    "url": "https://github.com/echozulucode/iconarium/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +28,8 @@
     "@tauri-apps/api": "^2.12.1",
     "@tauri-apps/plugin-dialog": "^2.8.1",
     "@tauri-apps/plugin-opener": "^2.7.0",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.13.1",
     "lucide-react": "^1.52.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

@@ -28,11 +28,23 @@ pub struct JobFlags {
 }
 
 impl JobFlags {
-    pub const ANALYZE: Self = Self { analyze: true, thumb: false };
-    pub const THUMB: Self = Self { analyze: false, thumb: true };
-    pub const BOTH: Self = Self { analyze: true, thumb: true };
+    pub const ANALYZE: Self = Self {
+        analyze: true,
+        thumb: false,
+    };
+    pub const THUMB: Self = Self {
+        analyze: false,
+        thumb: true,
+    };
+    pub const BOTH: Self = Self {
+        analyze: true,
+        thumb: true,
+    };
     fn merge(self, o: Self) -> Self {
-        Self { analyze: self.analyze || o.analyze, thumb: self.thumb || o.thumb }
+        Self {
+            analyze: self.analyze || o.analyze,
+            thumb: self.thumb || o.thumb,
+        }
     }
 }
 
@@ -102,7 +114,11 @@ impl State {
         for lane in 0..LANES {
             loop {
                 // Visible work is LIFO: during fast scrolling the newest request is what's on screen.
-                let item = if lane == 0 { self.lanes[lane].pop_back() } else { self.lanes[lane].pop_front() };
+                let item = if lane == 0 {
+                    self.lanes[lane].pop_back()
+                } else {
+                    self.lanes[lane].pop_front()
+                };
                 let Some((id, seq)) = item else { break };
                 if let Some(e) = self.entries.get(&id) {
                     if e.seq == seq {
@@ -173,7 +189,12 @@ impl WorkQueue {
     /// but is no longer in view is demoted: to P1 if a thumbnail request is still waiting
     /// on it (`waiting`), so held-open requests drain promptly instead of sitting behind
     /// the background backlog; otherwise to P3.
-    pub fn set_viewport(&self, visible: &[AssetId], nearby: &[AssetId], waiting: &HashSet<AssetId>) {
+    pub fn set_viewport(
+        &self,
+        visible: &[AssetId],
+        nearby: &[AssetId],
+        waiting: &HashSet<AssetId>,
+    ) {
         let mut st = self.state.lock();
         let keep: HashSet<AssetId> = visible.iter().chain(nearby.iter()).copied().collect();
         let demote: Vec<(AssetId, u8)> = st
@@ -266,6 +287,10 @@ impl WorkQueue {
         self.state.lock().analyze_count
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.state.lock().entries.is_empty()
+    }
+
     pub fn len(&self) -> usize {
         self.state.lock().entries.len()
     }
@@ -305,7 +330,10 @@ mod tests {
         let second = st.pop().unwrap();
         assert_eq!((second.0, second.2), (2, P2));
         drop(st);
-        assert_eq!(drain(&q).iter().map(|x| x.0).collect::<Vec<_>>(), vec![1, 3, 5]);
+        assert_eq!(
+            drain(&q).iter().map(|x| x.0).collect::<Vec<_>>(),
+            vec![1, 3, 5]
+        );
     }
 
     #[test]

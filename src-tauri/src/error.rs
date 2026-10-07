@@ -11,7 +11,10 @@ pub struct CmdError {
 
 impl CmdError {
     pub fn new(kind: &'static str, message: impl Into<String>) -> Self {
-        Self { kind, message: message.into() }
+        Self {
+            kind,
+            message: message.into(),
+        }
     }
     pub fn not_found(what: impl std::fmt::Display) -> Self {
         Self::new("not_found", format!("{what} not found"))

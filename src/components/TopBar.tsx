@@ -1,8 +1,9 @@
-import { Check, ChevronDown, Folder, FolderOpen, MoreHorizontal } from "lucide-react";
+import { Check, ChevronDown, Download, Folder, FolderOpen, MoreHorizontal, RefreshCw, RotateCw } from "lucide-react";
 import { useState } from "react";
 import type { GallerySize, ViewerBackground } from "../api/types";
 import { formatRelativeTime } from "../lib/format";
 import { useLibrary } from "../stores/libraryStore";
+import { hasPendingUpdate, updateStore, useUpdateStore, type UpdateState } from "../stores/updateStore";
 import { Menu, type MenuEntry } from "./Menu";
 import { SearchBar } from "./SearchBar";
 
@@ -115,10 +116,68 @@ const BACKGROUNDS: { id: ViewerBackground; label: string }[] = [
   { id: "dark", label: "Dark" },
 ];
 
+/** The "Updates" section of the settings menu. Failed and offline checks look like idle. */
+export function updateEntries(state: UpdateState, currentVersion: string | null): MenuEntry[] {
+  const name = currentVersion ? `Iconarium ${currentVersion}` : "Iconarium";
+  const head: MenuEntry = { type: "heading", id: "hu", label: "Updates" };
+  switch (state.kind) {
+    case "available":
+      return [
+        head,
+        {
+          id: "upd-get",
+          label: `Update to ${state.version}`,
+          secondary: "Download now, install on restart",
+          icon: <Download size={14} className="text-accent" />,
+          keepOpen: true,
+          onSelect: () => void updateStore.getState().startDownload(),
+        },
+      ];
+    case "downloading":
+      return [
+        head,
+        {
+          id: "upd-dl",
+          label: state.percent === null ? `Downloading ${state.version}…` : `Downloading ${state.version}… ${state.percent}%`,
+          disabled: true,
+          onSelect: () => {},
+        },
+      ];
+    case "ready-to-install":
+      return [
+        head,
+        {
+          id: "upd-restart",
+          label: "Restart to update",
+          secondary: `Installs ${state.version} and reopens Iconarium`,
+          icon: <RotateCw size={14} className="text-accent" />,
+          onSelect: () => void updateStore.getState().restart(),
+        },
+      ];
+    default:
+      return [
+        head,
+        {
+          id: "upd-check",
+          label: state.kind === "checking" ? "Checking for updates…" : "Check for updates",
+          secondary: state.kind === "up-to-date" ? `${name} is up to date` : name,
+          icon: <RefreshCw size={14} className={state.kind === "checking" ? "animate-spin" : undefined} />,
+          disabled: state.kind === "checking",
+          keepOpen: true,
+          onSelect: () => void updateStore.getState().checkForUpdates(),
+        },
+      ];
+  }
+}
+
 function SettingsMenu() {
   const settings = useLibrary((s) => s.settings);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const update = useLibrary.getState().updateSettings;
+  const updateState = useUpdateStore((s) => s.state);
+  const currentVersion = useUpdateStore((s) => s.currentVersion);
+  const pending = hasPendingUpdate(updateState);
+  const updaterAvailable = updateState.kind !== "idle" || currentVersion !== null;
 
   const items: MenuEntry[] = settings
     ? [
@@ -158,6 +217,7 @@ function SettingsMenu() {
           keepOpen: true,
           onSelect: () => void update({ clipboardIncludeSvgText: !settings.clipboardIncludeSvgText }),
         },
+        ...(updaterAvailable ? [{ type: "separator", id: "s3" } as MenuEntry, ...updateEntries(updateState, currentVersion)] : []),
       ]
     : [];
 
@@ -165,18 +225,20 @@ function SettingsMenu() {
     <>
       <button
         type="button"
-        aria-label="Settings"
+        aria-label={pending ? "Settings — update available" : "Settings"}
         aria-haspopup="menu"
         aria-expanded={!!anchor}
-        title="Settings"
+        title={pending ? "Settings — update available" : "Settings"}
         disabled={!settings}
         onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
         className={[
-          "focus-ring flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-150",
+          "focus-ring relative flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[8px] text-fg-muted transition-colors duration-150",
           anchor ? "bg-surface-2 text-fg" : "hover:bg-surface-2 hover:text-fg",
         ].join(" ")}
       >
         <MoreHorizontal size={17} />
+        {/* The update feature's only claim on attention: one small dot. */}
+        {pending && <span data-testid="update-dot" className="absolute right-[5px] top-[5px] h-[6px] w-[6px] rounded-full bg-accent" />}
       </button>
       {anchor && <Menu at={anchor} items={items} onClose={() => setAnchor(null)} align="end" minWidth={268} label="Settings" />}
     </>

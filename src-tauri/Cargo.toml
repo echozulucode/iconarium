@@ -1,12 +1,15 @@
 [package]
-name = "svg-library-browser"
+name = "iconarium"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "SVG Library Browser desktop application"
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Iconarium desktop application"
 
 [lib]
-name = "svg_library_browser_lib"
+name = "iconarium_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -17,6 +20,10 @@ svg-core = { path = "../crates/svg-core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+# Auto-update: the updater fetches plugins.updater.endpoints (tauri.conf.json) and refuses anything
+# not signed by the matching private key. The process plugin provides the relaunch.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

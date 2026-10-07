@@ -141,7 +141,12 @@ mod tests {
 
     #[test]
     fn sanitize_clamps() {
-        let s = Settings { thumbnail_size: 5, scan_batch_size: 1_000_000, ..Default::default() }.sanitized();
+        let s = Settings {
+            thumbnail_size: 5,
+            scan_batch_size: 1_000_000,
+            ..Default::default()
+        }
+        .sanitized();
         assert_eq!(s.thumbnail_size, 64);
         assert_eq!(s.scan_batch_size, 2000);
     }

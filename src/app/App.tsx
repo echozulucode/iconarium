@@ -13,11 +13,19 @@ import { useSelection } from "../stores/selectionStore";
 import { summaryCache } from "../stores/summaryCache";
 import { useViewer } from "../stores/viewerStore";
 import { SvgViewer } from "../viewer/SvgViewer";
+import { updateStore } from "../stores/updateStore";
 import { backend } from "./backendRef";
 
 export function App() {
   const ready = useLibrary((s) => s.ready);
   const libraryId = useLibrary((s) => s.library?.id ?? null);
+
+  // Launch update check: after first paint, never awaited, at most once per session (guarded in
+  // the store, so StrictMode's double effect is harmless). No-op outside Tauri.
+  useEffect(() => {
+    const t = window.setTimeout(() => void updateStore.getState().checkOnLaunch(), 1500);
+    return () => window.clearTimeout(t);
+  }, []);
 
   // Bootstrap + backend events.
   useEffect(() => {

@@ -15,14 +15,20 @@ pub struct TempFiles {
 
 impl TempFiles {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, counter: AtomicU64::new(0) }
+        Self {
+            dir,
+            counter: AtomicU64::new(0),
+        }
     }
 
     /// Write `contents` to a fresh per-drag folder as `file_name` and return its path.
     pub fn write(&self, file_name: &str, contents: &[u8]) -> std::io::Result<PathBuf> {
         self.cleanup_older_than(MAX_AGE);
         let n = self.counter.fetch_add(1, Ordering::Relaxed);
-        let stamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let stamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
         let folder = self.dir.join(format!("drag-{stamp}-{n}"));
         std::fs::create_dir_all(&folder)?;
         let path = folder.join(sanitize(file_name));
@@ -31,7 +37,9 @@ impl TempFiles {
     }
 
     pub fn cleanup_older_than(&self, age: Duration) {
-        let Ok(rd) = std::fs::read_dir(&self.dir) else { return };
+        let Ok(rd) = std::fs::read_dir(&self.dir) else {
+            return;
+        };
         let now = SystemTime::now();
         for e in rd.flatten() {
             let old = e
@@ -62,10 +70,20 @@ fn remove(p: &Path) {
 pub fn sanitize(name: &str) -> String {
     let s: String = name
         .chars()
-        .map(|c| if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     let s = s.trim_end_matches(['.', ' ']).to_string();
-    if s.is_empty() { "selection.svg".into() } else { s }
+    if s.is_empty() {
+        "selection.svg".into()
+    } else {
+        s
+    }
 }
 
 #[cfg(test)]

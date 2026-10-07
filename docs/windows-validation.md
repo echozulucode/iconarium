@@ -66,7 +66,7 @@ Settings live in the `settings` table (JSON) and are exposed through `update_set
 | C4 | Select 3 → drag any selected card → PowerPoint / Explorer | All 3 arrive | |
 | C5 | Drag with Shift held → Explorer | Still a copy, never a move | |
 | C6 | Viewer → region → drag the grip handle → PowerPoint | Cropped SVG is inserted; temp file named `<name>-crop.svg` | |
-| C7 | Restart the app | `%LOCALAPPDATA%\com.svglibrary.browser\tmp` is emptied | |
+| C7 | Restart the app | `%LOCALAPPDATA%\com.echozed.iconarium\tmp` is emptied | |
 
 ## D. WebView2 and general behavior
 

@@ -5,7 +5,10 @@ members = ["crates/svg-core", "src-tauri"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "UNLICENSED"
+license = "MIT"
+authors = ["Eric Zimmerman"]
+repository = "https://github.com/echozulucode/iconarium"
+homepage = "https://github.com/echozulucode/iconarium"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

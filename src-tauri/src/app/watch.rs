@@ -55,14 +55,19 @@ impl AppCore {
                 let _ = tx.send(Msg::Rescan);
             }
         };
-        let mut debouncer =
-            match new_debouncer_opt::<_, notify::RecommendedWatcher, NoCache>(DEBOUNCE, None, handler, NoCache, notify::Config::default()) {
-                Ok(d) => d,
-                Err(e) => {
-                    tracing::warn!("file watcher unavailable: {e}");
-                    return;
-                }
-            };
+        let mut debouncer = match new_debouncer_opt::<_, notify::RecommendedWatcher, NoCache>(
+            DEBOUNCE,
+            None,
+            handler,
+            NoCache,
+            notify::Config::default(),
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("file watcher unavailable: {e}");
+                return;
+            }
+        };
         if let Err(e) = debouncer.watch(root, RecursiveMode::Recursive) {
             tracing::warn!("cannot watch {}: {e}", root.display());
             return;
@@ -76,7 +81,9 @@ impl AppCore {
             if self.generation() != gen {
                 return;
             }
-            *slot = Some(WatchHandle { _debouncer: debouncer });
+            *slot = Some(WatchHandle {
+                _debouncer: debouncer,
+            });
         }
         std::thread::Builder::new()
             .name("watch-apply".into())
@@ -122,7 +129,10 @@ fn apply_loop(core: Arc<AppCore>, lib_id: LibraryId, root: PathBuf, gen: u64, rx
             absorb(m, &mut rescan, &mut rels);
         }
         if rescan || rels.len() > PER_PATH_LIMIT {
-            tracing::info!("watcher: full reconcile ({} paths, rescan={rescan})", rels.len());
+            tracing::info!(
+                "watcher: full reconcile ({} paths, rescan={rescan})",
+                rels.len()
+            );
             core.reconcile_now(lib_id, &root, gen);
         } else if !rels.is_empty() {
             let rels: Vec<String> = rels.into_iter().collect();
@@ -140,7 +150,9 @@ enum Change {
 }
 
 fn classify(root: &Path, p: &Path, ignore_hidden: bool) -> Change {
-    let Some(rel) = to_relative(root, p) else { return Change::Ignore };
+    let Some(rel) = to_relative(root, p) else {
+        return Change::Ignore;
+    };
     if rel.is_empty() {
         return Change::Structural;
     }

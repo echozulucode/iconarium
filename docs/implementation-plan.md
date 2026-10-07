@@ -1,4 +1,4 @@
-# SVG Library Browser — Phased Implementation Plan
+# Iconarium — Phased Implementation Plan
 
 Source: `docs/plan.md` (product plan). This document turns that plan into an executable build sequence, fixes the technical decisions it left open, defines the contracts between subsystems, and records how the work is split across a team of parallel agents.
 
@@ -13,6 +13,7 @@ Status legend: ☐ planned · ◐ in progress · ☑ done · ⚠ needs Windows/O
 | C — Tauri integration | ☑ (⚠ Office paste/drag) | App runs end to end; the Windows target type-checks, including clipboard-win and OLE drag code |
 | D — Datasets & hardening | ☑ | `docs/performance.md`; 3 robustness bugs found and fixed (nesting depth, text volume) |
 | E — Review, E2E, delivery | ☑ (⚠ manual Windows checks) | Independent review: 3 High, 4 Medium, 6 Low, fixed apart from the noted Low items; real-app E2E suite (`scripts/e2e`) passes; `docs/windows-validation.md` |
+| F — Release engineering (Iconarium, MIT, NSIS, auto-update) | ◐ code complete | Mirrors the Richochet release flow; signing key and secrets pending (`docs/issues.yaml` #18) |
 
 ### Deviations from the original plan (decided during build)
 

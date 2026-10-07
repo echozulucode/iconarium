@@ -44,11 +44,19 @@ fn intrinsic(rec: &svg_core::model::AssetRecord) -> (Option<f64>, Option<f64>) {
 /// (e.g. 24 px) still paste at a usable size (longest side ≥ 256 px, at most 8×).
 pub fn asset_png_scale(width: Option<f64>, height: Option<f64>) -> f64 {
     let longest = width.unwrap_or(0.0).max(height.unwrap_or(0.0));
-    if longest > 0.0 && longest < 256.0 { (256.0 / longest).min(8.0) } else { 1.0 }
+    if longest > 0.0 && longest < 256.0 {
+        (256.0 / longest).min(8.0)
+    } else {
+        1.0
+    }
 }
 
 #[tauri::command]
-pub async fn copy_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, format: AssetCopyFormat) -> CmdResult<()> {
+pub async fn copy_assets(
+    core: State<'_, Arc<AppCore>>,
+    ids: Vec<AssetId>,
+    format: AssetCopyFormat,
+) -> CmdResult<()> {
     let core = core.inner().clone();
     blocking(move || {
         if ids.is_empty() {
@@ -58,7 +66,10 @@ pub async fn copy_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, forma
         for id in &ids {
             located.push(core.locate(*id)?);
         }
-        let paths: Vec<String> = located.iter().map(|(_, p)| p.to_string_lossy().into_owned()).collect();
+        let paths: Vec<String> = located
+            .iter()
+            .map(|(_, p)| p.to_string_lossy().into_owned())
+            .collect();
         match format {
             AssetCopyFormat::Path => clip::copy_text(&paths.join(clip::NEWLINE)).map_err(clip_err),
             AssetCopyFormat::Filename => {
@@ -70,8 +81,18 @@ pub async fn copy_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, forma
                 let (rec, path) = &located[0];
                 let bytes = core.read_asset_bytes(rec, path)?;
                 let settings = core.settings();
-                let scale = { let (w, h) = intrinsic(rec); asset_png_scale(w, h) } * settings.clipboard_png_fallback_scale;
-                let png = render_png(&bytes, scale, Background::Transparent, &settings.limits, path.parent()).ok();
+                let scale = {
+                    let (w, h) = intrinsic(rec);
+                    asset_png_scale(w, h)
+                } * settings.clipboard_png_fallback_scale;
+                let png = render_png(
+                    &bytes,
+                    scale,
+                    Background::Transparent,
+                    &settings.limits,
+                    path.parent(),
+                )
+                .ok();
                 clip::copy_svg(
                     &bytes,
                     png.as_ref().map(|p| p.png.as_slice()),
@@ -86,8 +107,21 @@ pub async fn copy_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, forma
                 let (rec, path) = &located[0];
                 let bytes = core.read_asset_bytes(rec, path)?;
                 let limits = core.settings.read().limits.clone();
-                let bg = if matches!(format, AssetCopyFormat::PngWhite) { Background::White } else { Background::Transparent };
-                let png = render_png(&bytes, { let (w, h) = intrinsic(rec); asset_png_scale(w, h) }, bg, &limits, path.parent())?;
+                let bg = if matches!(format, AssetCopyFormat::PngWhite) {
+                    Background::White
+                } else {
+                    Background::Transparent
+                };
+                let png = render_png(
+                    &bytes,
+                    {
+                        let (w, h) = intrinsic(rec);
+                        asset_png_scale(w, h)
+                    },
+                    bg,
+                    &limits,
+                    path.parent(),
+                )?;
                 clip::copy_png(&png.png).map_err(clip_err)
             }
         }
@@ -96,7 +130,12 @@ pub async fn copy_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, forma
 }
 
 #[tauri::command]
-pub async fn copy_region(core: State<'_, Arc<AppCore>>, id: AssetId, region: Region, format: RegionCopyFormat) -> CmdResult<()> {
+pub async fn copy_region(
+    core: State<'_, Arc<AppCore>>,
+    id: AssetId,
+    region: Region,
+    format: RegionCopyFormat,
+) -> CmdResult<()> {
     let core = core.inner().clone();
     blocking(move || {
         if !region.is_valid() {
@@ -109,7 +148,15 @@ pub async fn copy_region(core: State<'_, Arc<AppCore>>, id: AssetId, region: Reg
         match format {
             RegionCopyFormat::Svg => {
                 let cropped = svg_core::svg::crop::crop_svg(&bytes, region)?;
-                let png = render_region_png(&bytes, region, settings.clipboard_png_fallback_scale, Background::Transparent, limits, path.parent()).ok();
+                let png = render_region_png(
+                    &bytes,
+                    region,
+                    settings.clipboard_png_fallback_scale,
+                    Background::Transparent,
+                    limits,
+                    path.parent(),
+                )
+                .ok();
                 clip::copy_svg(
                     cropped.as_bytes(),
                     png.as_ref().map(|p| p.png.as_slice()),
@@ -121,8 +168,16 @@ pub async fn copy_region(core: State<'_, Arc<AppCore>>, id: AssetId, region: Reg
                 .map_err(clip_err)
             }
             RegionCopyFormat::Png | RegionCopyFormat::Png2x | RegionCopyFormat::PngWhite => {
-                let scale = if matches!(format, RegionCopyFormat::Png2x) { 2.0 } else { 1.0 };
-                let bg = if matches!(format, RegionCopyFormat::PngWhite) { Background::White } else { Background::Transparent };
+                let scale = if matches!(format, RegionCopyFormat::Png2x) {
+                    2.0
+                } else {
+                    1.0
+                };
+                let bg = if matches!(format, RegionCopyFormat::PngWhite) {
+                    Background::White
+                } else {
+                    Background::Transparent
+                };
                 let png = render_region_png(&bytes, region, scale, bg, limits, path.parent())?;
                 clip::copy_png(&png.png).map_err(clip_err)
             }

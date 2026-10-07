@@ -1,0 +1,85 @@
+name: Release
+
+# Triggered by pushing a `v*` tag — the last manual step after `just bump <version> --tag`.
+# `just bump` deliberately stops short of pushing: the tag push is what starts a release.
+on:
+  push:
+    tags: ['v*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write # tauri-action creates the release and uploads the installer + latest.json
+
+jobs:
+  # Fail in seconds, before a runner spends ten minutes compiling, if the tag and the three
+  # version files disagree or the updater public key was never configured.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - uses: extractions/setup-just@v4
+
+      - name: The three version files must agree with the tag
+        run: just check-version "${GITHUB_REF_NAME#v}"
+
+      - name: The updater public key must be set
+        run: node tools/set-updater-pubkey.mjs --check
+
+  build:
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: extractions/setup-just@v4
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # A tag can point at a commit CI never ran: re-run the gate on exactly what ships.
+      - name: Lint and typecheck
+        run: just check
+
+      - name: Test
+        run: just test
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Iconarium ${{ github.ref_name }}
+          # Draft on purpose: smoke-test the installer and edit the notes before publishing.
+          # `latest/download/latest.json` ignores drafts, so clients see nothing until you publish.
+          releaseDraft: true
+          prerelease: false
+          updaterJsonPreferNsis: true
+          releaseBody: |
+            ## Install
+
+            Download `Iconarium_<version>_x64-setup.exe` below and run it. It installs for the
+            current user into `%LOCALAPPDATA%\Iconarium`, so there is no administrator prompt.
+            Installed copies update themselves: look for the dot on the ⋯ settings button.
+
+            > **Windows SmartScreen will warn you.** The installer is not Authenticode-signed, so
+            > Windows shows "Windows protected your PC". Choose **More info → Run anyway**.

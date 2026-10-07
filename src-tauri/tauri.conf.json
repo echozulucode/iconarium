@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "SVG Library Browser",
+  "productName": "Iconarium",
   "version": "0.1.0",
-  "identifier": "com.svglibrary.browser",
+  "identifier": "com.echozed.iconarium",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,12 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "SVG Library Browser",
+        "label": "main",
+        "title": "Iconarium",
         "width": 1280,
         "height": 820,
         "minWidth": 720,
         "minHeight": 480,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "center": true
       }
     ],
     "security": {
@@ -26,7 +28,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "Eric Zimmerman",
+    "copyright": "Copyright (c) 2026 Eric Zimmerman",
+    "category": "Graphics",
+    "shortDescription": "Search, preview, crop and copy SVGs from large libraries.",
+    "longDescription": "Iconarium is a fast Windows browser for large SVG libraries. Search filenames and the text inside drawings, preview at any zoom, select a region, and copy or drag it straight into PowerPoint, Visio or draw.io as a vector.",
+    "homepage": "https://github.com/echozulucode/iconarium",
+    "licenseFile": "../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,8 +46,28 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper" },
-      "nsis": { "installMode": "currentUser" }
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "languages": [
+          "English"
+        ]
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/echozulucode/iconarium/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_WITH_ICONARIUM_UPDATER_PUBKEY",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

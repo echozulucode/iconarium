@@ -40,7 +40,13 @@ pub struct ScanStatus {
 
 impl Default for ScanStatus {
     fn default() -> Self {
-        Self { phase: ScanPhase::Idle, discovered: 0, processed: 0, total: 0, message: String::new() }
+        Self {
+            phase: ScanPhase::Idle,
+            discovered: 0,
+            processed: 0,
+            total: 0,
+            message: String::new(),
+        }
     }
 }
 
@@ -102,7 +108,7 @@ impl EventHub {
                         break;
                     }
                     tick = tick.wrapping_add(1);
-                    hub.flush(tick % METADATA_EVERY_TICKS == 0);
+                    hub.flush(tick.is_multiple_of(METADATA_EVERY_TICKS));
                 }
             })
             .expect("spawn event hub");
@@ -154,7 +160,13 @@ impl EventHub {
             p.metadata = false;
             p.thumbs.clear();
         }
-        let _ = self.app.emit(EV_CATALOG, CatalogChanged { total, reason: ChangeReason::Load });
+        let _ = self.app.emit(
+            EV_CATALOG,
+            CatalogChanged {
+                total,
+                reason: ChangeReason::Load,
+            },
+        );
         let _ = self.app.emit(EV_SCAN, self.status());
     }
 
@@ -162,7 +174,12 @@ impl EventHub {
         let (structural, metadata, thumbs, status_dirty) = {
             let mut p = self.pending.lock();
             let metadata = allow_metadata && std::mem::take(&mut p.metadata);
-            (p.structural.take(), metadata, std::mem::take(&mut p.thumbs), std::mem::take(&mut p.status_dirty))
+            (
+                p.structural.take(),
+                metadata,
+                std::mem::take(&mut p.thumbs),
+                std::mem::take(&mut p.status_dirty),
+            )
         };
         let total = *self.total.lock();
         if status_dirty {
@@ -171,11 +188,22 @@ impl EventHub {
         if let Some(reason) = structural {
             let _ = self.app.emit(EV_CATALOG, CatalogChanged { total, reason });
         } else if metadata {
-            let _ = self.app.emit(EV_CATALOG, CatalogChanged { total, reason: ChangeReason::Metadata });
+            let _ = self.app.emit(
+                EV_CATALOG,
+                CatalogChanged {
+                    total,
+                    reason: ChangeReason::Metadata,
+                },
+            );
         }
         if !thumbs.is_empty() {
             for chunk in thumbs.chunks(2000) {
-                let _ = self.app.emit(EV_THUMB, ThumbReady { ids: chunk.to_vec() });
+                let _ = self.app.emit(
+                    EV_THUMB,
+                    ThumbReady {
+                        ids: chunk.to_vec(),
+                    },
+                );
             }
         }
     }

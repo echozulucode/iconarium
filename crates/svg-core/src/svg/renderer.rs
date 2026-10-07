@@ -113,7 +113,9 @@ pub fn safe_relative_href(href: &str) -> Option<std::path::PathBuf> {
         return None;
     }
     let lower = href.to_ascii_lowercase();
-    let raster = [".png", ".jpg", ".jpeg", ".gif", ".webp"].iter().any(|e| lower.ends_with(e));
+    let raster = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+        .iter()
+        .any(|e| lower.ends_with(e));
     if !raster {
         return None;
     }
@@ -125,7 +127,11 @@ pub fn safe_relative_href(href: &str) -> Option<std::path::PathBuf> {
             c => out.push(c),
         }
     }
-    if out.as_os_str().is_empty() { None } else { Some(out) }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// Canvas size usvg would use for this document (CSS px). Used as the metadata
@@ -149,7 +155,8 @@ fn failure_to_error(f: ParseFailure) -> CoreError {
 
 /// Apply limits and build a usvg tree from document text.
 fn tree_from_text(text: &str, limits: &Limits, resources_dir: Option<&Path>) -> Result<usvg::Tree> {
-    let doc = parse_xml(text, limits.max_nodes, limits.max_nesting_depth).map_err(failure_to_error)?;
+    let doc =
+        parse_xml(text, limits.max_nodes, limits.max_nesting_depth).map_err(failure_to_error)?;
     let root = root_svg(&doc).map_err(CoreError::Parse)?;
     let complexity = collect_complexity(&doc, text.len() as u64);
     check_complexity(&complexity, limits).map_err(CoreError::Limit)?;
@@ -165,7 +172,8 @@ fn tree_from_text(text: &str, limits: &Limits, resources_dir: Option<&Path>) -> 
         let layout = root_layout(text, root)
             .ok_or_else(|| CoreError::Parse("Cannot locate root element".into()))?;
         let fixed = rewrite_root(text, &layout, &[], &[("xmlns".into(), SVG_NS.into())]);
-        let doc2 = parse_xml(&fixed, limits.max_nodes, limits.max_nesting_depth).map_err(failure_to_error)?;
+        let doc2 = parse_xml(&fixed, limits.max_nodes, limits.max_nesting_depth)
+            .map_err(failure_to_error)?;
         build(&doc2)
     } else {
         build(&doc)
@@ -334,7 +342,8 @@ pub fn parse_tree(text: &str, limits: &Limits, resources_dir: Option<&Path>) -> 
 /// composited onto white. Used for the legacy bitmap clipboard format consumed by
 /// raster-only receivers (e.g. Paint), which cannot represent alpha.
 pub fn png_to_bmp(png: &[u8]) -> Result<Vec<u8>> {
-    let pm = Pixmap::decode_png(png).map_err(|e| CoreError::Render(format!("PNG decode failed: {e}")))?;
+    let pm = Pixmap::decode_png(png)
+        .map_err(|e| CoreError::Render(format!("PNG decode failed: {e}")))?;
     let (w, h) = (pm.width() as usize, pm.height() as usize);
     let row = (w * 3 + 3) & !3;
     let image_size = row * h;
@@ -387,7 +396,7 @@ mod tests {
         let row = (3 * 3 + 3) & !3;
         assert_eq!(bmp.len(), 54 + row * 2);
         assert_eq!(&bmp[54..57], &[0, 0, 255]); // BGR red
-        // Transparent pixels become white.
+                                                // Transparent pixels become white.
         let png = Pixmap::new(1, 1).unwrap().encode_png().unwrap();
         assert_eq!(&png_to_bmp(&png).unwrap()[54..57], &[255, 255, 255]);
     }

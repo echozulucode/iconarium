@@ -26,7 +26,11 @@ pub async fn search(core: State<'_, Arc<AppCore>>, query: String) -> CmdResult<R
 }
 
 #[tauri::command]
-pub async fn get_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, query: Option<String>) -> CmdResult<Vec<AssetSummary>> {
+pub async fn get_assets(
+    core: State<'_, Arc<AppCore>>,
+    ids: Vec<AssetId>,
+    query: Option<String>,
+) -> CmdResult<Vec<AssetSummary>> {
     let q = query.as_deref().filter(|q| !q.trim().is_empty());
     Ok(core.catalog.read().summaries(&ids, q))
 }
@@ -55,7 +59,10 @@ pub struct AssetDetailDto {
 }
 
 #[tauri::command]
-pub async fn get_asset_detail(core: State<'_, Arc<AppCore>>, id: AssetId) -> CmdResult<AssetDetailDto> {
+pub async fn get_asset_detail(
+    core: State<'_, Arc<AppCore>>,
+    id: AssetId,
+) -> CmdResult<AssetDetailDto> {
     let core = core.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let (rec, path) = core.locate(id)?;
@@ -65,7 +72,12 @@ pub async fn get_asset_detail(core: State<'_, Arc<AppCore>>, id: AssetId) -> Cmd
             Err(e) if e.kind == "limit_exceeded" => (rec, Default::default()),
             Err(e) => return Err(e),
         };
-        let text = core.catalog.read().get_text(id).cloned().unwrap_or_default();
+        let text = core
+            .catalog
+            .read()
+            .get_text(id)
+            .cloned()
+            .unwrap_or_default();
         let warn = core.settings.read().limits.warn_file_bytes;
         Ok(AssetDetailDto {
             id,
@@ -93,7 +105,11 @@ pub async fn get_asset_detail(core: State<'_, Arc<AppCore>>, id: AssetId) -> Cmd
 }
 
 #[tauri::command]
-pub async fn set_viewport(core: State<'_, Arc<AppCore>>, visible: Vec<AssetId>, nearby: Vec<AssetId>) -> CmdResult<()> {
+pub async fn set_viewport(
+    core: State<'_, Arc<AppCore>>,
+    visible: Vec<AssetId>,
+    nearby: Vec<AssetId>,
+) -> CmdResult<()> {
     let waiting: std::collections::HashSet<AssetId> = core.waiters.lock().keys().copied().collect();
     core.queue.set_viewport(&visible, &nearby, &waiting);
     Ok(())

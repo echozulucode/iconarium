@@ -5,10 +5,10 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 pub fn init(log_dir: &Path) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,svg_core=info,svg_library_browser_lib=debug"));
+        .unwrap_or_else(|_| EnvFilter::new("info,svg_core=info,iconarium_lib=debug"));
     let file = tracing_appender::rolling::Builder::new()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
-        .filename_prefix("svg-library-browser")
+        .filename_prefix("iconarium")
         .filename_suffix("log")
         .max_log_files(7)
         .build(log_dir)

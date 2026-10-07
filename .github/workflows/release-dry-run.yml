@@ -1,0 +1,70 @@
+name: Release dry run
+
+# The same build as release.yml with no tag and no release, uploading the installer as a workflow
+# artifact instead — so the first real tag is not also the first run of the release pipeline.
+# Dispatch it, download the artifact, install it on a real machine, then tag.
+on:
+  workflow_dispatch:
+    inputs:
+      run-tests:
+        description: 'Run the full gate as well as building'
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: extractions/setup-just@v4
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: The updater public key must be set
+        run: node tools/set-updater-pubkey.mjs --check
+
+      - name: Lint and typecheck
+        if: inputs.run-tests
+        run: just check
+
+      - name: Test
+        if: inputs.run-tests
+        run: just test
+
+      # createUpdaterArtifacts signs the installer, so the build needs the key even here. A missing
+      # secret or wrong passphrase shows up now rather than on a tag.
+      - name: Build the installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: just build
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: iconarium-installer
+          # The .sig is the half the updater verifies; its absence means signing silently didn't happen.
+          path: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/bundle/nsis/*-setup.exe.sig
+          if-no-files-found: error
+          retention-days: 14

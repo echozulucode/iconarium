@@ -10,7 +10,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use svg_core::config::Limits;
-use svg_core::model::{Analysis, AssetId, AssetRecord, Complexity, ProcessingState, SearchText, SvgMeta};
+use svg_core::model::{
+    Analysis, AssetId, AssetRecord, Complexity, ProcessingState, SearchText, SvgMeta,
+};
 use tauri::http::{header, Response, StatusCode};
 
 pub enum DbWrite {
@@ -35,7 +37,8 @@ pub fn spawn_db_writer(core: Arc<AppCore>, rx: Receiver<DbWrite>) {
                     Ok(DbWrite::Thumb(id, size, key)) => thumbs.push((id, size, key)),
                     Err(_) => {}
                 }
-                let due = last.elapsed() >= Duration::from_millis(200) || analyses.len() + thumbs.len() >= 256;
+                let due = last.elapsed() >= Duration::from_millis(200)
+                    || analyses.len() + thumbs.len() >= 256;
                 if (due || disconnected) && !(analyses.is_empty() && thumbs.is_empty()) {
                     let mut db = core.db.lock();
                     if !analyses.is_empty() {
@@ -59,7 +62,9 @@ pub fn spawn_db_writer(core: Arc<AppCore>, rx: Receiver<DbWrite>) {
 
 pub fn worker_count(configured: Option<usize>) -> usize {
     configured.unwrap_or_else(|| {
-        let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2);
+        let n = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2);
         // Leave a core for the UI/WebView; cap to avoid thrashing disks.
         n.saturating_sub(1).clamp(1, 6)
     })
@@ -77,10 +82,16 @@ pub fn spawn_workers(core: &Arc<AppCore>) {
             .spawn(move || {
                 while let Some((id, flags, prio)) = core.queue.pop() {
                     let gen = core.generation();
-                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| process(&core, id, flags, prio, gen)));
+                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        process(&core, id, flags, prio, gen)
+                    }));
                     if r.is_err() {
                         tracing::error!("worker panicked processing asset {id}");
-                        respond_waiters(&core, id, error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error"));
+                        respond_waiters(
+                            &core,
+                            id,
+                            error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
+                        );
                     }
                     if prio >= P3 || flags.analyze {
                         after_background_job(&core, flags);
@@ -108,11 +119,19 @@ fn after_background_job(core: &AppCore, flags: JobFlags) {
 
 fn process(core: &AppCore, id: AssetId, flags: JobFlags, prio: u8, gen: u64) {
     let Some(mut rec) = core.record(id) else {
-        respond_waiters(core, id, error_response(StatusCode::NOT_FOUND, "unknown asset"));
+        respond_waiters(
+            core,
+            id,
+            error_response(StatusCode::NOT_FOUND, "unknown asset"),
+        );
         return;
     };
     let Some(path) = core.absolute_path(&rec) else {
-        respond_waiters(core, id, error_response(StatusCode::NOT_FOUND, "no library"));
+        respond_waiters(
+            core,
+            id,
+            error_response(StatusCode::NOT_FOUND, "no library"),
+        );
         return;
     };
     let settings = core.settings();
@@ -137,7 +156,11 @@ fn process(core: &AppCore, id: AssetId, flags: JobFlags, prio: u8, gen: u64) {
             }
         };
         let Some(analysis) = analysis else {
-            respond_waiters(core, id, error_response(StatusCode::NOT_FOUND, "file missing"));
+            respond_waiters(
+                core,
+                id,
+                error_response(StatusCode::NOT_FOUND, "file missing"),
+            );
             return;
         };
         if core.generation() != gen {
@@ -158,7 +181,11 @@ fn process(core: &AppCore, id: AssetId, flags: JobFlags, prio: u8, gen: u64) {
         return;
     }
     if !rec.state.renderable() || rec.state == ProcessingState::Discovered {
-        respond_waiters(core, id, error_response(StatusCode::UNPROCESSABLE_ENTITY, rec.state.as_str()));
+        respond_waiters(
+            core,
+            id,
+            error_response(StatusCode::UNPROCESSABLE_ENTITY, rec.state.as_str()),
+        );
         return;
     }
     let size = settings.thumbnail_size;
@@ -172,7 +199,11 @@ fn process(core: &AppCore, id: AssetId, flags: JobFlags, prio: u8, gen: u64) {
         None => match std::fs::read(&path) {
             Ok(b) => b,
             Err(e) => {
-                respond_waiters(core, id, error_response(StatusCode::NOT_FOUND, &e.to_string()));
+                respond_waiters(
+                    core,
+                    id,
+                    error_response(StatusCode::NOT_FOUND, &e.to_string()),
+                );
                 return;
             }
         },
@@ -186,7 +217,11 @@ fn process(core: &AppCore, id: AssetId, flags: JobFlags, prio: u8, gen: u64) {
             if let Err(e) = cache::write_thumb(&tpath, &png) {
                 tracing::warn!("writing thumbnail {}: {e}", tpath.display());
             } else {
-                let _ = core.db_tx.send(DbWrite::Thumb(id, size, cache::cache_key(&rec.fast_fingerprint, size)));
+                let _ = core.db_tx.send(DbWrite::Thumb(
+                    id,
+                    size,
+                    cache::cache_key(&rec.fast_fingerprint, size),
+                ));
             }
             let had_waiters = respond_waiters(core, id, png_response(png));
             if !had_waiters && core.queue.in_viewport(id) {
@@ -195,14 +230,22 @@ fn process(core: &AppCore, id: AssetId, flags: JobFlags, prio: u8, gen: u64) {
         }
         Err(e) => {
             tracing::debug!("thumbnail render failed for {}: {e}", rec.relative_path);
-            respond_waiters(core, id, error_response(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string()));
+            respond_waiters(
+                core,
+                id,
+                error_response(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string()),
+            );
         }
     }
 }
 
 /// Fold an analysis into the catalog (immediately visible to search) and queue the DB write.
 pub fn apply_analysis(core: &AppCore, mut rec: AssetRecord, analysis: Analysis) -> AssetRecord {
-    rec.content_hash = if analysis.content_hash.is_empty() { None } else { Some(analysis.content_hash.clone()) };
+    rec.content_hash = if analysis.content_hash.is_empty() {
+        None
+    } else {
+        Some(analysis.content_hash.clone())
+    };
     rec.width = analysis.meta.width;
     rec.height = analysis.meta.height;
     rec.view_box = analysis.meta.view_box;
@@ -218,7 +261,11 @@ pub fn apply_analysis(core: &AppCore, mut rec: AssetRecord, analysis: Analysis) 
             cat.set_text(rec.id, analysis.text.clone());
         }
     }
-    let _ = core.db_tx.send(DbWrite::Analysis(rec.id, rec.fast_fingerprint.clone(), Box::new(analysis)));
+    let _ = core.db_tx.send(DbWrite::Analysis(
+        rec.id,
+        rec.fast_fingerprint.clone(),
+        Box::new(analysis),
+    ));
     core.events.metadata_changed();
     rec
 }
@@ -234,7 +281,10 @@ fn oversize_analysis(size: u64, limits: &Limits) -> Analysis {
         content_hash: String::new(),
         meta: SvgMeta::default(),
         text: SearchText::default(),
-        complexity: Complexity { file_size: size, ..Default::default() },
+        complexity: Complexity {
+            file_size: size,
+            ..Default::default()
+        },
     }
 }
 
@@ -245,7 +295,10 @@ fn read_error_analysis(size: u64, e: &std::io::Error) -> Analysis {
         content_hash: String::new(),
         meta: SvgMeta::default(),
         text: SearchText::default(),
-        complexity: Complexity { file_size: size, ..Default::default() },
+        complexity: Complexity {
+            file_size: size,
+            ..Default::default()
+        },
     }
 }
 

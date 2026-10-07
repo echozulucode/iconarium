@@ -46,7 +46,10 @@ pub async fn open_library(core: State<'_, Arc<AppCore>>, path: String) -> CmdRes
 }
 
 #[tauri::command]
-pub async fn pick_and_open_library(app: AppHandle, core: State<'_, Arc<AppCore>>) -> CmdResult<Option<LibraryInfo>> {
+pub async fn pick_and_open_library(
+    app: AppHandle,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<Option<LibraryInfo>> {
     let core = core.inner().clone();
     let start_dir = core.active().map(|a| a.root);
     tauri::async_runtime::spawn_blocking(move || {
@@ -54,8 +57,12 @@ pub async fn pick_and_open_library(app: AppHandle, core: State<'_, Arc<AppCore>>
         if let Some(dir) = start_dir {
             dialog = dialog.set_directory(dir);
         }
-        let Some(picked) = dialog.blocking_pick_folder() else { return Ok(None) };
-        let path = picked.into_path().map_err(|e| CmdError::new("invalid_input", e.to_string()))?;
+        let Some(picked) = dialog.blocking_pick_folder() else {
+            return Ok(None);
+        };
+        let path = picked
+            .into_path()
+            .map_err(|e| CmdError::new("invalid_input", e.to_string()))?;
         core.open_library(&path.to_string_lossy()).map(Some)
     })
     .await
@@ -80,15 +87,19 @@ fn merge(base: &mut serde_json::Value, patch: serde_json::Value) {
 }
 
 pub fn apply_patch(current: &Settings, patch: serde_json::Value) -> CmdResult<Settings> {
-    let mut value = serde_json::to_value(current).map_err(|e| CmdError::new("error", e.to_string()))?;
+    let mut value =
+        serde_json::to_value(current).map_err(|e| CmdError::new("error", e.to_string()))?;
     merge(&mut value, patch);
-    let next: Settings =
-        serde_json::from_value(value).map_err(|e| CmdError::new("invalid_input", format!("Invalid settings: {e}")))?;
+    let next: Settings = serde_json::from_value(value)
+        .map_err(|e| CmdError::new("invalid_input", format!("Invalid settings: {e}")))?;
     Ok(next.sanitized())
 }
 
 #[tauri::command]
-pub async fn update_settings(core: State<'_, Arc<AppCore>>, patch: serde_json::Value) -> CmdResult<Settings> {
+pub async fn update_settings(
+    core: State<'_, Arc<AppCore>>,
+    patch: serde_json::Value,
+) -> CmdResult<Settings> {
     let core = core.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let next = apply_patch(&core.settings(), patch)?;
@@ -106,7 +117,11 @@ mod tests {
     #[test]
     fn patch_merges_nested_and_sanitizes() {
         let s = Settings::default();
-        let next = apply_patch(&s, serde_json::json!({"limits": {"maxNodes": 5}, "thumbnailSize": 1})).unwrap();
+        let next = apply_patch(
+            &s,
+            serde_json::json!({"limits": {"maxNodes": 5}, "thumbnailSize": 1}),
+        )
+        .unwrap();
         assert_eq!(next.limits.max_nodes, 5);
         assert_eq!(next.limits.max_file_bytes, s.limits.max_file_bytes);
         assert_eq!(next.thumbnail_size, 64);

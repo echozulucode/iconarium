@@ -120,10 +120,14 @@ pub fn element_depth(text: &str, stop_above: u32) -> u32 {
     let mut depth: u32 = 0;
     let mut max: u32 = 0;
     let find = |from: usize, pat: &[u8]| -> usize {
-        memchr::memmem::find(&b[from.min(n)..], pat).map(|p| from + p + pat.len()).unwrap_or(n)
+        memchr::memmem::find(&b[from.min(n)..], pat)
+            .map(|p| from + p + pat.len())
+            .unwrap_or(n)
     };
     while i < n {
-        let Some(p) = memchr::memchr(b'<', &b[i..]) else { break };
+        let Some(p) = memchr::memchr(b'<', &b[i..]) else {
+            break;
+        };
         i += p + 1;
         if i >= n {
             break;
@@ -731,10 +735,16 @@ mod depth_tests {
     fn depth_scanner() {
         assert_eq!(element_depth("<svg/>", 10), 0);
         assert_eq!(element_depth("<svg><g><g/></g></svg>", 10), 2);
-        assert_eq!(element_depth("<svg><!-- <g><g><g> --><g a='>'>x</g></svg>", 10), 2);
+        assert_eq!(
+            element_depth("<svg><!-- <g><g><g> --><g a='>'>x</g></svg>", 10),
+            2
+        );
         assert_eq!(element_depth("<?xml version='1.0'?><!DOCTYPE svg [<!ENTITY a '<g>'>]><svg><![CDATA[<g><g>]]></svg>", 10), 1);
         let deep = format!("<svg>{}{}</svg>", "<g>".repeat(5000), "</g>".repeat(5000));
         assert!(element_depth(&deep, 256) > 256);
-        assert!(matches!(parse_xml(&deep, u32::MAX - 1, 256), Err(ParseFailure::Limit(_))));
+        assert!(matches!(
+            parse_xml(&deep, u32::MAX - 1, 256),
+            Err(ParseFailure::Limit(_))
+        ));
     }
 }

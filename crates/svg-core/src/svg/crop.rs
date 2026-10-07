@@ -65,10 +65,11 @@ pub fn crop_svg(bytes: &[u8], region: Region) -> Result<String> {
     }
     let decoded = decode_text(bytes).map_err(CoreError::Parse)?;
     let text: &str = &decoded.text;
-    let doc = parse_xml(text, u32::MAX - 1, super::parser::HARD_MAX_DEPTH).map_err(|f| match f {
-        ParseFailure::Limit(m) => CoreError::Limit(m),
-        ParseFailure::Malformed(m) => CoreError::Parse(m),
-    })?;
+    let doc =
+        parse_xml(text, u32::MAX - 1, super::parser::HARD_MAX_DEPTH).map_err(|f| match f {
+            ParseFailure::Limit(m) => CoreError::Limit(m),
+            ParseFailure::Malformed(m) => CoreError::Parse(m),
+        })?;
     let root = root_svg(&doc).map_err(CoreError::Parse)?;
     let layout = root_layout(text, root)
         .ok_or_else(|| CoreError::Parse("Cannot locate root element".into()))?;

@@ -36,8 +36,16 @@ pub enum Item<'a> {
     Files(&'a [String]),
 }
 
-pub fn copy_svg(svg: &[u8], png_fallback: Option<&[u8]>, opts: SvgCopyOptions) -> Result<(), String> {
-    let text = if opts.include_text { Some(String::from_utf8_lossy(svg).into_owned()) } else { None };
+pub fn copy_svg(
+    svg: &[u8],
+    png_fallback: Option<&[u8]>,
+    opts: SvgCopyOptions,
+) -> Result<(), String> {
+    let text = if opts.include_text {
+        Some(String::from_utf8_lossy(svg).into_owned())
+    } else {
+        None
+    };
     let mut items = vec![Item::Named(FORMAT_SVG, svg)];
     if let Some(png) = png_fallback {
         items.push(Item::Named(FORMAT_PNG, png));
@@ -82,7 +90,9 @@ pub fn write(items: &[Item<'_>]) -> Result<(), String> {
                 .map_err(|e| e.to_string())
                 .and_then(|bmp| raw::set_bitmap_with(&bmp, NoClear).map_err(|e| e.to_string())),
             Item::Text(t) => raw::set_string_with(t, NoClear).map_err(|e| e.to_string()),
-            Item::Files(paths) => raw::set_file_list_with(&paths[..], NoClear).map_err(|e| e.to_string()),
+            Item::Files(paths) => {
+                raw::set_file_list_with(&paths[..], NoClear).map_err(|e| e.to_string())
+            }
         };
         if let Err(e) = res {
             if required {
@@ -110,7 +120,9 @@ pub fn write(items: &[Item<'_>]) -> Result<(), String> {
     }
     for item in items {
         match item {
-            Item::Named(name, data) => contents.push(ClipboardContent::Other((*name).to_string(), data.to_vec())),
+            Item::Named(name, data) => {
+                contents.push(ClipboardContent::Other((*name).to_string(), data.to_vec()))
+            }
             Item::Text(t) => contents.push(ClipboardContent::Text((*t).to_string())),
             Item::Files(paths) => contents.push(ClipboardContent::Files(paths.to_vec())),
             Item::Bitmap(_) => {}

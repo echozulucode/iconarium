@@ -17,9 +17,7 @@ impl AppPaths {
         let data = pr
             .app_local_data_dir()
             .map_err(|e| std::io::Error::other(e.to_string()))?;
-        let cache = pr
-            .app_cache_dir()
-            .unwrap_or_else(|_| data.join("cache"));
+        let cache = pr.app_cache_dir().unwrap_or_else(|_| data.join("cache"));
         let log_dir = pr.app_log_dir().unwrap_or_else(|_| data.join("logs"));
         let paths = Self {
             db_path: data.join("library-index.sqlite3"),

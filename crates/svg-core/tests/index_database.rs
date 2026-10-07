@@ -283,16 +283,38 @@ fn checked_save_skips_stale_fingerprint() {
     use svg_core::model::DiscoveredFile;
     let mut db = Database::open_in_memory().unwrap();
     let lib = db.upsert_library("/lib", "lib").unwrap();
-    let f = DiscoveredFile { relative_path: "a.svg".into(), filename: "a.svg".into(), file_size: 10, mtime_ns: 1 };
-    let rec = db.insert_assets(lib.id, &[f.clone()]).unwrap().remove(0);
+    let f = DiscoveredFile {
+        relative_path: "a.svg".into(),
+        filename: "a.svg".into(),
+        file_size: 10,
+        mtime_ns: 1,
+    };
+    let rec = db.insert_assets(lib.id, std::slice::from_ref(&f)).unwrap().remove(0);
     // File changes before the (old) analysis is saved.
-    let changed = DiscoveredFile { file_size: 20, mtime_ns: 2, ..f };
+    let changed = DiscoveredFile {
+        file_size: 20,
+        mtime_ns: 2,
+        ..f
+    };
     db.update_changed(&[(rec.id, changed)]).unwrap();
-    db.save_analyses_checked(&[(rec.id, rec.fast_fingerprint.clone(), analysis("stale", "old text"))]).unwrap();
+    db.save_analyses_checked(&[(
+        rec.id,
+        rec.fast_fingerprint.clone(),
+        analysis("stale", "old text"),
+    )])
+    .unwrap();
     let now = db.get_asset(rec.id).unwrap().unwrap();
     assert_eq!(now.state, svg_core::model::ProcessingState::Discovered);
     assert!(db.get_search_text(rec.id).unwrap().is_none());
     // Current fingerprint applies.
-    db.save_analyses_checked(&[(rec.id, now.fast_fingerprint.clone(), analysis("fresh", "new text"))]).unwrap();
-    assert_eq!(db.get_asset(rec.id).unwrap().unwrap().state, svg_core::model::ProcessingState::Ready);
+    db.save_analyses_checked(&[(
+        rec.id,
+        now.fast_fingerprint.clone(),
+        analysis("fresh", "new text"),
+    )])
+    .unwrap();
+    assert_eq!(
+        db.get_asset(rec.id).unwrap().unwrap().state,
+        svg_core::model::ProcessingState::Ready
+    );
 }

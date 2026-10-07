@@ -107,7 +107,10 @@ impl AppCore {
         if lib.info.id != rec.library_id {
             return None;
         }
-        Some(svg_core::library::scanner::to_absolute(&lib.root, &rec.relative_path))
+        Some(svg_core::library::scanner::to_absolute(
+            &lib.root,
+            &rec.relative_path,
+        ))
     }
 
     pub fn record(&self, id: AssetId) -> Option<AssetRecord> {
@@ -116,13 +119,21 @@ impl AppCore {
 
     /// Record + absolute path, or a not-found error message.
     pub fn locate(&self, id: AssetId) -> Result<(AssetRecord, PathBuf), crate::error::CmdError> {
-        let rec = self.record(id).ok_or_else(|| crate::error::CmdError::not_found(format!("Asset {id}")))?;
-        let path = self.absolute_path(&rec).ok_or_else(crate::error::CmdError::no_library)?;
+        let rec = self
+            .record(id)
+            .ok_or_else(|| crate::error::CmdError::not_found(format!("Asset {id}")))?;
+        let path = self
+            .absolute_path(&rec)
+            .ok_or_else(crate::error::CmdError::no_library)?;
         Ok((rec, path))
     }
 
     /// Read an asset's bytes, enforcing the configured hard size limit.
-    pub fn read_asset_bytes(&self, rec: &AssetRecord, path: &Path) -> Result<Vec<u8>, crate::error::CmdError> {
+    pub fn read_asset_bytes(
+        &self,
+        rec: &AssetRecord,
+        path: &Path,
+    ) -> Result<Vec<u8>, crate::error::CmdError> {
         let limits = self.settings.read().limits.clone();
         let size = std::fs::metadata(path)?.len();
         if size > limits.max_file_bytes || rec.state == ProcessingState::LimitExceeded {
@@ -201,7 +212,10 @@ impl AppCore {
     pub fn has_assets_under(&self, rel_dir: &str) -> bool {
         let prefix = format!("{}/", rel_dir.trim_end_matches('/'));
         let cat = self.catalog.read();
-        let found = cat.ids().any(|id| cat.get(id).is_some_and(|r| r.relative_path.starts_with(&prefix)));
+        let found = cat.ids().any(|id| {
+            cat.get(id)
+                .is_some_and(|r| r.relative_path.starts_with(&prefix))
+        });
         found
     }
 

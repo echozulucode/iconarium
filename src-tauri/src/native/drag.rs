@@ -4,7 +4,12 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Window};
 
-pub fn start_file_drag(app: &AppHandle, window: Window, files: Vec<PathBuf>, preview_png: Vec<u8>) -> Result<(), String> {
+pub fn start_file_drag(
+    app: &AppHandle,
+    window: Window,
+    files: Vec<PathBuf>,
+    preview_png: Vec<u8>,
+) -> Result<(), String> {
     if files.is_empty() {
         return Ok(());
     }
@@ -21,7 +26,10 @@ pub fn start_file_drag(app: &AppHandle, window: Window, files: Vec<PathBuf>, pre
                 drag::DragItem::Files(files),
                 drag::Image::Raw(preview_png),
                 |result, _pos| tracing::debug!("drag finished: {result:?}"),
-                drag::Options { skip_animatation_on_cancel_or_failure: false, mode: drag::DragMode::Copy },
+                drag::Options {
+                    skip_animatation_on_cancel_or_failure: false,
+                    mode: drag::DragMode::Copy,
+                },
             )
             .map_err(|e| format!("Drag failed: {e}")),
             Err(e) => Err(format!("Drag failed: {e}")),

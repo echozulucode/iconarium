@@ -1,4 +1,4 @@
-//! svg-core: headless engine for the SVG Library Browser.
+//! svg-core: headless engine for the Iconarium.
 //!
 //! * [`library`] — progressive recursive discovery, fingerprints, reconciliation.
 //! * [`index`]   — persistent SQLite catalog (migrations, assets, metadata, text, thumbnails, settings).

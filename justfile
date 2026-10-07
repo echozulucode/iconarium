@@ -1,4 +1,4 @@
-# SVG Library Browser — task runner (https://just.systems)
+# Iconarium — task runner (https://just.systems)
 #
 #   just            list recipes
 #   just dev        run the desktop app in development mode (hot reload)
@@ -20,32 +20,51 @@ dev: deps
 dev-ui: deps
     npm run dev
 
-# Release build + Windows installers (NSIS/MSI) in target/release/bundle/
+# The bundler signs the installer for the auto-updater, so `build` needs the private key. Checking
+# first fails in a second instead of after a multi-minute compile that leaves an .exe without a
+# .sig (which can never be offered as an update).
+
+# Signed release installer (NSIS) in target/release/bundle/nsis/ — needs TAURI_SIGNING_PRIVATE_KEY
 build: deps
+    @node tools/updater-key.mjs --check
     npm run tauri build
+
+# Installer WITHOUT updater signing — local testing only, never for a release
+build-unsigned: deps
+    npm run tauri build -- --config src-tauri/tauri.unsigned.conf.json
 
 # Debug build of the app without installers
 build-debug: deps
     npm run tauri build -- --debug --no-bundle
 
 # Install JavaScript dependencies when missing or when package.json / package-lock.json changed
-[windows]
 deps:
-    $stamp = 'node_modules/.deps-stamp'; if (-not (Test-Path $stamp) -or (Get-Item package.json, package-lock.json | Where-Object { $_.LastWriteTime -gt (Get-Item $stamp).LastWriteTime })) { npm install --no-audit --no-fund; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; New-Item -ItemType File -Force $stamp | Out-Null }
-
-[unix]
-deps:
-    #!/usr/bin/env sh
-    set -e
-    stamp=node_modules/.deps-stamp
-    if [ ! -f "$stamp" ] || [ package.json -nt "$stamp" ] || [ package-lock.json -nt "$stamp" ]; then
-        npm install --no-audit --no-fund
-        touch "$stamp"
-    fi
+    @node tools/ensure-deps.mjs
 
 # Reinstall JavaScript dependencies unconditionally
 install:
     npm install --no-audit --no-fund
+
+# Bump the version in all three files that carry it, e.g. `just bump patch --tag`
+bump *ARGS:
+    node tools/bump-version.mjs {{ARGS}}
+
+# Verify the three version files agree with a version or tag (what the release workflow checks)
+check-version VERSION:
+    node tools/bump-version.mjs --check {{VERSION}}
+
+# One-time: generate the updater signing key in ~/.tauri and write its PUBLIC key into tauri.conf.json
+updater-key:
+    node tools/updater-key.mjs
+
+# Everything CI runs
+ci: check test
+
+# Type-check and lint everything (format check, tsc, clippy with warnings as errors)
+check: deps
+    cargo fmt --all -- --check
+    npx tsc -b
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Run all tests (Rust core + app shell + frontend)
 test: deps
@@ -60,11 +79,6 @@ test-core:
 test-ui: deps
     npm test
 
-# Type-check and lint everything
-check: deps
-    npx tsc -b
-    cargo clippy --workspace --all-targets
-
 # Format Rust code
 fmt:
     cargo fmt --all
@@ -78,10 +92,9 @@ bench dir="datasets/C":
     cargo run -p svg-core --release --example bench_pipeline -- {{dir}}
 
 # End-to-end tests of the real app (Linux only: Xvfb + tauri-driver, see scripts/e2e/README.md)
-[unix]
 e2e: deps
     npm run build
-    cargo build --release -p svg-library-browser --features tauri/custom-protocol
+    cargo build --release -p iconarium --features tauri/custom-protocol
     xvfb-run -a -s "-screen 0 1280x900x24" node scripts/e2e/run.mjs
 
 # Remove build outputs (Rust target/ and dist/)

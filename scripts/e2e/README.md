@@ -1,6 +1,6 @@
 # End-to-end tests (real app, Linux)
 
-`run.mjs` launches the **real** SVG Library Browser binary (Rust backend + WebKitGTK WebView)
+`run.mjs` launches the **real** Iconarium binary (Rust backend + WebKitGTK WebView)
 through [`tauri-driver`](https://v2.tauri.app/develop/tests/webdriver/) and drives it with
 WebdriverIO over W3C WebDriver. Windows (WebView2) is the product target, but WebDriver for
 Tauri only works on Linux/WebKitGTK, so this suite runs on Linux under a virtual X display.
@@ -17,8 +17,8 @@ npm install                                           # webdriverio is a devDepe
 
 ```sh
 npm run build
-cargo build --release -p svg-library-browser --features tauri/custom-protocol
-# (or: cargo build -p svg-library-browser --features tauri/custom-protocol  → target/debug)
+cargo build --release -p iconarium --features tauri/custom-protocol
+# (or: cargo build -p iconarium --features tauri/custom-protocol  → target/debug)
 ```
 
 Without `tauri/custom-protocol` the binary tries to load the Vite dev server instead of `dist/`.
@@ -38,7 +38,7 @@ dataset A, default `/tmp/e2e-work`), `--skip 9` (skip the 50k dataset), `--only 
 
 Exit code is non-zero if any scenario fails. Screenshots go to `docs/screenshots/e2e-*.png`
 (`e2e-fail-<id>.png` on failure). The app's own log is under
-`$HOME/.local/share/com.svglibrary.browser/logs/` of the isolated HOME.
+`$HOME/.local/share/com.echozed.iconarium/logs/` of the isolated HOME.
 
 The datasets must exist (`scripts/gen-datasets.sh`, see `crates/svg-core/examples/gen_dataset.rs`).
 
