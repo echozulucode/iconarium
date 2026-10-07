@@ -66,14 +66,66 @@ pub struct RenderedPng {
     pub height: u32,
 }
 
-/// usvg options used everywhere: shared fonts, browser-like default font size.
+/// Largest linked (non-embedded) raster image file that will be loaded.
+pub const MAX_LINKED_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+/// usvg options used everywhere: shared fonts, browser-like default font size, and a
+/// restricted image resolver (see [`safe_href_resolver`]).
 pub fn usvg_options(resources_dir: Option<&Path>) -> usvg::Options<'static> {
     usvg::Options {
         resources_dir: resources_dir.map(Path::to_path_buf),
         fontdb: shared_fontdb(),
         font_size: DEFAULT_FONT_SIZE,
+        image_href_resolver: safe_href_resolver(),
         ..Default::default()
     }
+}
+
+/// `<image href>` resolution policy. usvg's default reads *any* path, including absolute
+/// paths, `..` escapes and UNC shares (`\\host\share\x.png`, which on Windows triggers an
+/// SMB connection during background thumbnailing). We only allow:
+/// * `data:` URIs (default decoder), and
+/// * relative paths to raster files (png/jpg/jpeg/gif/webp) below the SVG's own folder,
+///   with no `..` components, no drive letters/schemes, up to [`MAX_LINKED_IMAGE_BYTES`].
+///
+/// Linked `.svg` images are refused (they could reference each other recursively).
+pub fn safe_href_resolver() -> usvg::ImageHrefResolver<'static> {
+    let load = usvg::ImageHrefResolver::default_string_resolver();
+    usvg::ImageHrefResolver {
+        resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+        resolve_string: Box::new(move |href: &str, opts: &usvg::Options| {
+            let dir = opts.resources_dir.as_ref()?;
+            let rel = safe_relative_href(href)?;
+            let path = dir.join(rel);
+            let meta = std::fs::metadata(&path).ok()?;
+            if !meta.is_file() || meta.len() > MAX_LINKED_IMAGE_BYTES {
+                return None;
+            }
+            load(path.to_str()?, opts)
+        }),
+    }
+}
+
+/// Validate an `<image href>` as a relative raster path inside the document's folder.
+pub fn safe_relative_href(href: &str) -> Option<std::path::PathBuf> {
+    let href = href.trim();
+    if href.is_empty() || href.contains(':') || href.starts_with('/') || href.starts_with('\\') {
+        return None;
+    }
+    let lower = href.to_ascii_lowercase();
+    let raster = [".png", ".jpg", ".jpeg", ".gif", ".webp"].iter().any(|e| lower.ends_with(e));
+    if !raster {
+        return None;
+    }
+    let mut out = std::path::PathBuf::new();
+    for comp in href.split(['/', '\\']) {
+        match comp {
+            "" | "." => {}
+            ".." => return None,
+            c => out.push(c),
+        }
+    }
+    if out.as_os_str().is_empty() { None } else { Some(out) }
 }
 
 /// Canvas size usvg would use for this document (CSS px). Used as the metadata
@@ -278,9 +330,81 @@ pub fn parse_tree(text: &str, limits: &Limits, resources_dir: Option<&Path>) -> 
     tree_from_text(text, limits, resources_dir)
 }
 
+/// Convert a PNG into a 24-bit bottom-up BMP file (BITMAPFILEHEADER + BITMAPINFOHEADER),
+/// composited onto white. Used for the legacy bitmap clipboard format consumed by
+/// raster-only receivers (e.g. Paint), which cannot represent alpha.
+pub fn png_to_bmp(png: &[u8]) -> Result<Vec<u8>> {
+    let pm = Pixmap::decode_png(png).map_err(|e| CoreError::Render(format!("PNG decode failed: {e}")))?;
+    let (w, h) = (pm.width() as usize, pm.height() as usize);
+    let row = (w * 3 + 3) & !3;
+    let image_size = row * h;
+    let file_size = 14 + 40 + image_size;
+    let mut out = Vec::with_capacity(file_size);
+    // BITMAPFILEHEADER
+    out.extend_from_slice(b"BM");
+    out.extend_from_slice(&(file_size as u32).to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&54u32.to_le_bytes());
+    // BITMAPINFOHEADER
+    out.extend_from_slice(&40u32.to_le_bytes());
+    out.extend_from_slice(&(w as i32).to_le_bytes());
+    out.extend_from_slice(&(h as i32).to_le_bytes()); // positive = bottom-up
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&24u16.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB
+    out.extend_from_slice(&(image_size as u32).to_le_bytes());
+    out.extend_from_slice(&2835i32.to_le_bytes()); // 72 DPI
+    out.extend_from_slice(&2835i32.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    let data = pm.data(); // premultiplied RGBA
+    for y in (0..h).rev() {
+        let start = out.len();
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            let inv = 255 - data[i + 3] as u16;
+            // Premultiplied over white: c + (1 - a) * 255
+            out.push((data[i + 2] as u16 + inv).min(255) as u8);
+            out.push((data[i + 1] as u16 + inv).min(255) as u8);
+            out.push((data[i] as u16 + inv).min(255) as u8);
+        }
+        out.resize(start + row, 0);
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bmp_conversion() {
+        let mut pm = Pixmap::new(3, 2).unwrap();
+        pm.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+        let png = pm.encode_png().unwrap();
+        let bmp = png_to_bmp(&png).unwrap();
+        assert_eq!(&bmp[..2], b"BM");
+        let row = (3 * 3 + 3) & !3;
+        assert_eq!(bmp.len(), 54 + row * 2);
+        assert_eq!(&bmp[54..57], &[0, 0, 255]); // BGR red
+        // Transparent pixels become white.
+        let png = Pixmap::new(1, 1).unwrap().encode_png().unwrap();
+        assert_eq!(&png_to_bmp(&png).unwrap()[54..57], &[255, 255, 255]);
+    }
+
+    #[test]
+    fn href_policy() {
+        assert!(safe_relative_href("img/a.png").is_some());
+        assert!(safe_relative_href("./a.JPG").is_some());
+        assert!(safe_relative_href("../a.png").is_none());
+        assert!(safe_relative_href("img/../../a.png").is_none());
+        assert!(safe_relative_href("/etc/a.png").is_none());
+        assert!(safe_relative_href("\\\\host\\share\\a.png").is_none());
+        assert!(safe_relative_href("C:\\x\\a.png").is_none());
+        assert!(safe_relative_href("file:///c:/a.png").is_none());
+        assert!(safe_relative_href("http://x/a.png").is_none());
+        assert!(safe_relative_href("other.svg").is_none());
+    }
 
     #[test]
     fn fit_scaled_clamps() {

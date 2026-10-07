@@ -20,7 +20,8 @@ export function scanLabel(s: ScanStatus): { text: string; busy: boolean; progres
         progress: s.total > 0 ? s.processed / s.total : null,
       };
     default:
-      return { text: "Indexed", busy: false, progress: null };
+      // Backend may append background preview progress ("Indexed · generating previews (n left)").
+      return { text: s.message?.startsWith("Indexed") ? s.message : "Indexed", busy: false, progress: null };
   }
 }
 

@@ -1,19 +1,24 @@
 //! Clipboard publishing (plan §2.1, §2.4, §20).
 //!
-//! Formats placed for an SVG copy, in order:
-//! 1. bitmap (CF_DIB/CF_DIBV5) — optional fallback for raster-only receivers (Paint).
-//!    clipboard-rs clears the clipboard when setting an image, so it must go first.
-//! 2. `PNG` (registered format) — alpha-preserving raster used by Office/browsers.
-//! 3. `image/svg+xml` (registered format) — vector content for PowerPoint/Word/Visio.
-//! 4. text/plain SVG markup — optional (some receivers prefer text over graphics).
+//! On Windows the clipboard is opened exactly once per copy and every format is written
+//! inside that single open/empty/close cycle, most descriptive format first:
+//! 1. `image/svg+xml` (registered) — vector content for PowerPoint/Word/Visio/browsers.
+//! 2. `PNG` (registered) — alpha-preserving raster used by Office and browsers.
+//! 3. `CF_BITMAP` — optional raster fallback for legacy receivers (Paint); no alpha,
+//!    composited onto white.
+//! 4. `CF_UNICODETEXT` SVG markup — optional (some receivers prefer text over graphics).
 //!
-//! The choices are settings so they can be tuned after Office validation (docs/windows-validation.md).
-
-use clipboard_rs::common::RustImage;
-use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext, RustImageData};
+//! The optional formats are settings so they can be tuned after Office validation
+//! (docs/windows-validation.md). Other platforms (used for development and E2E tests)
+//! go through clipboard-rs.
 
 pub const FORMAT_SVG: &str = "image/svg+xml";
 pub const FORMAT_PNG: &str = "PNG";
+
+#[cfg(windows)]
+pub const NEWLINE: &str = "\r\n";
+#[cfg(not(windows))]
+pub const NEWLINE: &str = "\n";
 
 #[derive(Debug, Clone, Copy)]
 pub struct SvgCopyOptions {
@@ -21,53 +26,96 @@ pub struct SvgCopyOptions {
     pub include_text: bool,
 }
 
-fn ctx() -> Result<ClipboardContext, String> {
-    ClipboardContext::new().map_err(|e| format!("Clipboard unavailable: {e}"))
-}
-
-fn image_content(png: &[u8]) -> Option<ClipboardContent> {
-    RustImageData::from_bytes(png).ok().map(ClipboardContent::Image)
+/// One clipboard entry, in placement order.
+pub enum Item<'a> {
+    /// Data under a registered (named) clipboard format.
+    Named(&'static str, &'a [u8]),
+    /// Legacy bitmap from PNG bytes (converted to BMP / DIB as the platform requires).
+    Bitmap(&'a [u8]),
+    Text(&'a str),
+    Files(&'a [String]),
 }
 
 pub fn copy_svg(svg: &[u8], png_fallback: Option<&[u8]>, opts: SvgCopyOptions) -> Result<(), String> {
-    let mut contents = Vec::new();
+    let text = if opts.include_text { Some(String::from_utf8_lossy(svg).into_owned()) } else { None };
+    let mut items = vec![Item::Named(FORMAT_SVG, svg)];
     if let Some(png) = png_fallback {
+        items.push(Item::Named(FORMAT_PNG, png));
         if opts.include_bitmap {
-            if let Some(img) = image_content(png) {
-                contents.push(img);
-            }
+            items.push(Item::Bitmap(png));
         }
-        contents.push(ClipboardContent::Other(FORMAT_PNG.into(), png.to_vec()));
     }
-    contents.push(ClipboardContent::Other(FORMAT_SVG.into(), svg.to_vec()));
-    if opts.include_text {
-        contents.push(ClipboardContent::Text(String::from_utf8_lossy(svg).into_owned()));
+    if let Some(t) = text.as_deref() {
+        items.push(Item::Text(t));
     }
-    ctx()?.set(contents).map_err(|e| format!("Copy failed: {e}"))
+    write(&items)
 }
 
 pub fn copy_png(png: &[u8]) -> Result<(), String> {
-    let mut contents = Vec::new();
-    if let Some(img) = image_content(png) {
-        contents.push(img);
-    }
-    contents.push(ClipboardContent::Other(FORMAT_PNG.into(), png.to_vec()));
-    ctx()?.set(contents).map_err(|e| format!("Copy failed: {e}"))
+    write(&[Item::Named(FORMAT_PNG, png), Item::Bitmap(png)])
 }
 
 pub fn copy_text(text: &str) -> Result<(), String> {
-    ctx()?.set_text(text.to_string()).map_err(|e| format!("Copy failed: {e}"))
+    write(&[Item::Text(text)])
 }
 
-/// Multiple files: CF_HDROP file list (paste into Explorer copies the files) + the paths as text.
+/// Multiple files: file list (paste into Explorer copies the files) + the paths as text.
 pub fn copy_files(paths: &[String]) -> Result<(), String> {
-    let text = paths.join(crate::native::clipboard::NEWLINE);
-    ctx()?
-        .set(vec![ClipboardContent::Files(paths.to_vec()), ClipboardContent::Text(text)])
-        .map_err(|e| format!("Copy failed: {e}"))
+    let text = paths.join(NEWLINE);
+    write(&[Item::Files(paths), Item::Text(&text)])
 }
 
 #[cfg(windows)]
-pub const NEWLINE: &str = "\r\n";
+pub fn write(items: &[Item<'_>]) -> Result<(), String> {
+    use clipboard_win::{options::NoClear, raw, register_format, Clipboard};
+
+    let _guard = Clipboard::new_attempts(10).map_err(|e| format!("Clipboard is busy: {e}"))?;
+    raw::empty().map_err(|e| format!("Cannot clear clipboard: {e}"))?;
+    for (i, item) in items.iter().enumerate() {
+        let required = i == 0;
+        let res: Result<(), String> = match item {
+            Item::Named(name, data) => match register_format(name) {
+                Some(fmt) => raw::set_without_clear(fmt.get(), data).map_err(|e| e.to_string()),
+                None => Err(format!("cannot register clipboard format {name}")),
+            },
+            Item::Bitmap(png) => svg_core::svg::renderer::png_to_bmp(png)
+                .map_err(|e| e.to_string())
+                .and_then(|bmp| raw::set_bitmap_with(&bmp, NoClear).map_err(|e| e.to_string())),
+            Item::Text(t) => raw::set_string_with(t, NoClear).map_err(|e| e.to_string()),
+            Item::Files(paths) => raw::set_file_list_with(&paths[..], NoClear).map_err(|e| e.to_string()),
+        };
+        if let Err(e) = res {
+            if required {
+                return Err(format!("Copy failed: {e}"));
+            }
+            tracing::warn!("optional clipboard format {i} failed: {e}");
+        }
+    }
+    Ok(())
+}
+
 #[cfg(not(windows))]
-pub const NEWLINE: &str = "\n";
+pub fn write(items: &[Item<'_>]) -> Result<(), String> {
+    use clipboard_rs::common::RustImage;
+    use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext, RustImageData};
+
+    // clipboard-rs clears the clipboard when it sets an image, so the image goes first.
+    let mut contents = Vec::new();
+    for item in items {
+        if let Item::Bitmap(png) = item {
+            if let Ok(img) = RustImageData::from_bytes(png) {
+                contents.push(ClipboardContent::Image(img));
+            }
+        }
+    }
+    for item in items {
+        match item {
+            Item::Named(name, data) => contents.push(ClipboardContent::Other((*name).to_string(), data.to_vec())),
+            Item::Text(t) => contents.push(ClipboardContent::Text((*t).to_string())),
+            Item::Files(paths) => contents.push(ClipboardContent::Files(paths.to_vec())),
+            Item::Bitmap(_) => {}
+        }
+    }
+    let ctx = ClipboardContext::new().map_err(|e| format!("Clipboard unavailable: {e}"))?;
+    ctx.set(contents).map_err(|e| format!("Copy failed: {e}"))
+}

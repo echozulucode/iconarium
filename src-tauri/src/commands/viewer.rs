@@ -46,7 +46,12 @@ pub async fn save_region(
         }
         let Some(target) = dialog.blocking_save_file() else { return Ok(None) };
         let target = target.into_path().map_err(|e| CmdError::new("invalid_input", e.to_string()))?;
-        if target == path {
+        let same = if cfg!(windows) {
+            target.to_string_lossy().eq_ignore_ascii_case(&path.to_string_lossy())
+        } else {
+            target == path
+        };
+        if same {
             return Err(CmdError::new("invalid_input", "Refusing to overwrite the source SVG"));
         }
         std::fs::write(&target, data)?;

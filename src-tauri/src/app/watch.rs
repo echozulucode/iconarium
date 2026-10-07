@@ -27,7 +27,7 @@ enum Msg {
 }
 
 impl AppCore {
-    pub(crate) fn start_watcher(self: &Arc<Self>, lib_id: LibraryId, root: &Path) {
+    pub(crate) fn start_watcher(self: &Arc<Self>, lib_id: LibraryId, root: &Path, gen: u64) {
         let (tx, rx) = unbounded::<Msg>();
         let handler = move |res: DebounceEventResult| match res {
             Ok(events) => {
@@ -69,12 +69,19 @@ impl AppCore {
         }
         let core = self.clone();
         let root_buf = root.to_path_buf();
-        let gen = self.generation();
+        {
+            // Install only if this library is still the active one (checked under the lock
+            // that open_library uses to drop the previous watcher).
+            let mut slot = self.watcher.lock();
+            if self.generation() != gen {
+                return;
+            }
+            *slot = Some(WatchHandle { _debouncer: debouncer });
+        }
         std::thread::Builder::new()
             .name("watch-apply".into())
             .spawn(move || apply_loop(core, lib_id, root_buf, gen, rx))
             .ok();
-        *self.watcher.lock() = Some(WatchHandle { _debouncer: debouncer });
         tracing::info!("watching {}", root.display());
     }
 }
@@ -85,17 +92,26 @@ fn apply_loop(core: Arc<AppCore>, lib_id: LibraryId, root: PathBuf, gen: u64, rx
             break;
         }
         // Coalesce everything that is already queued.
+        let ignore_hidden = core.settings.read().ignore_hidden;
         let mut rescan = false;
         let mut rels: BTreeSet<String> = BTreeSet::new();
         let absorb = |m: Msg, rescan: &mut bool, rels: &mut BTreeSet<String>| match m {
             Msg::Rescan => *rescan = true,
             Msg::Paths(ps) => {
                 for p in ps {
-                    match classify(&root, &p) {
+                    match classify(&root, &p, ignore_hidden) {
                         Change::Svg(rel) => {
                             rels.insert(rel);
                         }
                         Change::Structural => *rescan = true,
+                        // A removed path that isn't an SVG may have been a folder (also one
+                        // with a dot in its name, e.g. "icons.v2"): reconcile if we index
+                        // anything below it.
+                        Change::MaybeDir(rel) => {
+                            if core.has_assets_under(&rel) {
+                                *rescan = true;
+                            }
+                        }
                         Change::Ignore => {}
                     }
                 }
@@ -107,11 +123,11 @@ fn apply_loop(core: Arc<AppCore>, lib_id: LibraryId, root: PathBuf, gen: u64, rx
         }
         if rescan || rels.len() > PER_PATH_LIMIT {
             tracing::info!("watcher: full reconcile ({} paths, rescan={rescan})", rels.len());
-            core.reconcile_now(lib_id, &root);
+            core.reconcile_now(lib_id, &root, gen);
         } else if !rels.is_empty() {
             let rels: Vec<String> = rels.into_iter().collect();
             tracing::debug!("watcher: applying {} path changes", rels.len());
-            core.apply_path_changes(lib_id, &root, &rels);
+            core.apply_path_changes(lib_id, &root, &rels, gen);
         }
     }
 }
@@ -119,15 +135,16 @@ fn apply_loop(core: Arc<AppCore>, lib_id: LibraryId, root: PathBuf, gen: u64, rx
 enum Change {
     Svg(String),
     Structural,
+    MaybeDir(String),
     Ignore,
 }
 
-fn classify(root: &Path, p: &Path) -> Change {
+fn classify(root: &Path, p: &Path, ignore_hidden: bool) -> Change {
     let Some(rel) = to_relative(root, p) else { return Change::Ignore };
     if rel.is_empty() {
         return Change::Structural;
     }
-    if is_hidden_relative(&rel) {
+    if ignore_hidden && is_hidden_relative(&rel) {
         return Change::Ignore;
     }
     let name = rel.rsplit('/').next().unwrap_or(&rel);
@@ -138,6 +155,8 @@ fn classify(root: &Path, p: &Path) -> Change {
     // its contents may have moved, so reconcile the tree.
     if p.is_dir() || (!p.exists() && Path::new(name).extension().is_none()) {
         Change::Structural
+    } else if !p.exists() {
+        Change::MaybeDir(rel)
     } else {
         Change::Ignore
     }

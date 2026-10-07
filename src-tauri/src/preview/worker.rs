@@ -2,7 +2,7 @@
 //! batching database writer so workers never hold the DB lock for long.
 
 use super::cache;
-use super::queue::{JobFlags, P3};
+use super::queue::{JobFlags, P3, P4};
 use crate::app::events::ScanPhase;
 use crate::app::AppCore;
 use crossbeam_channel::{Receiver, RecvTimeoutError};
@@ -14,7 +14,8 @@ use svg_core::model::{Analysis, AssetId, AssetRecord, Complexity, ProcessingStat
 use tauri::http::{header, Response, StatusCode};
 
 pub enum DbWrite {
-    Analysis(AssetId, Box<Analysis>),
+    /// Analysis result + the fingerprint it was computed for (stale results are dropped).
+    Analysis(AssetId, String, Box<Analysis>),
     Thumb(AssetId, u32, String),
 }
 
@@ -23,14 +24,14 @@ pub fn spawn_db_writer(core: Arc<AppCore>, rx: Receiver<DbWrite>) {
     std::thread::Builder::new()
         .name("db-writer".into())
         .spawn(move || {
-            let mut analyses: Vec<(AssetId, Analysis)> = Vec::new();
+            let mut analyses: Vec<(AssetId, String, Analysis)> = Vec::new();
             let mut thumbs: Vec<(AssetId, u32, String)> = Vec::new();
             let mut last = Instant::now();
             loop {
                 let msg = rx.recv_timeout(Duration::from_millis(200));
                 let disconnected = matches!(msg, Err(RecvTimeoutError::Disconnected));
                 match msg {
-                    Ok(DbWrite::Analysis(id, a)) => analyses.push((id, *a)),
+                    Ok(DbWrite::Analysis(id, fp, a)) => analyses.push((id, fp, *a)),
                     Ok(DbWrite::Thumb(id, size, key)) => thumbs.push((id, size, key)),
                     Err(_) => {}
                 }
@@ -38,7 +39,7 @@ pub fn spawn_db_writer(core: Arc<AppCore>, rx: Receiver<DbWrite>) {
                 if (due || disconnected) && !(analyses.is_empty() && thumbs.is_empty()) {
                     let mut db = core.db.lock();
                     if !analyses.is_empty() {
-                        if let Err(e) = db.save_analyses(&analyses) {
+                        if let Err(e) = db.save_analyses_checked(&analyses) {
                             tracing::warn!("saving {} analyses failed: {e}", analyses.len());
                         }
                         analyses.clear();
@@ -76,12 +77,12 @@ pub fn spawn_workers(core: &Arc<AppCore>) {
             .spawn(move || {
                 while let Some((id, flags, prio)) = core.queue.pop() {
                     let gen = core.generation();
-                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| process(&core, id, flags, gen)));
+                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| process(&core, id, flags, prio, gen)));
                     if r.is_err() {
                         tracing::error!("worker panicked processing asset {id}");
                         respond_waiters(&core, id, error_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error"));
                     }
-                    if prio == P3 || flags.analyze {
+                    if prio >= P3 || flags.analyze {
                         after_background_job(&core, flags);
                     }
                 }
@@ -96,27 +97,16 @@ fn after_background_job(core: &AppCore, flags: JobFlags) {
     if flags.analyze {
         core.processed.fetch_add(1, Ordering::Relaxed);
     }
-    if core.scan_running.load(Ordering::SeqCst) {
+    if core.scan_in_progress() {
         return;
     }
-    let remaining = core.queue.len();
     let status = core.events.status();
     if status.phase == ScanPhase::Processing || status.phase == ScanPhase::Idle {
-        core.events.update_status(|s| {
-            if remaining == 0 {
-                s.phase = ScanPhase::Idle;
-                s.message = "Indexed".into();
-            } else {
-                s.phase = ScanPhase::Processing;
-                s.processed = core.processed.load(Ordering::Relaxed) as usize;
-                s.total = s.processed + remaining;
-                s.message = format!("Processing {remaining} remaining");
-            }
-        });
+        core.update_processing_status();
     }
 }
 
-fn process(core: &AppCore, id: AssetId, flags: JobFlags, gen: u64) {
+fn process(core: &AppCore, id: AssetId, flags: JobFlags, prio: u8, gen: u64) {
     let Some(mut rec) = core.record(id) else {
         respond_waiters(core, id, error_response(StatusCode::NOT_FOUND, "unknown asset"));
         return;
@@ -157,6 +147,14 @@ fn process(core: &AppCore, id: AssetId, flags: JobFlags, gen: u64) {
     }
 
     if !flags.thumb {
+        return;
+    }
+    // Background work: finish analysing the whole library (content search) before
+    // speculative thumbnail prefill. Requested thumbnails (waiters) render right away.
+    if flags.analyze && prio >= P3 && !core.waiters.lock().contains_key(&id) {
+        if rec.state == ProcessingState::Ready {
+            core.queue.push(id, P4, JobFlags::THUMB);
+        }
         return;
     }
     if !rec.state.renderable() || rec.state == ProcessingState::Discovered {
@@ -220,7 +218,7 @@ pub fn apply_analysis(core: &AppCore, mut rec: AssetRecord, analysis: Analysis) 
             cat.set_text(rec.id, analysis.text.clone());
         }
     }
-    let _ = core.db_tx.send(DbWrite::Analysis(rec.id, Box::new(analysis)));
+    let _ = core.db_tx.send(DbWrite::Analysis(rec.id, rec.fast_fingerprint.clone(), Box::new(analysis)));
     core.events.metadata_changed();
     rec
 }

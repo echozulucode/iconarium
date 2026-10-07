@@ -368,18 +368,25 @@ impl Database {
 
     /// Persist one analysis result.
     pub fn save_analysis(&mut self, id: AssetId, analysis: &Analysis) -> Result<()> {
-        self.save_analyses_iter(std::iter::once((id, analysis)))
+        self.save_analyses_iter(std::iter::once((id, None, analysis)))
     }
 
     /// Persist many analysis results in one transaction. Ids that no longer exist
     /// (deleted while being analyzed) are skipped.
     pub fn save_analyses(&mut self, items: &[(AssetId, Analysis)]) -> Result<()> {
-        self.save_analyses_iter(items.iter().map(|(id, a)| (*id, a)))
+        self.save_analyses_iter(items.iter().map(|(id, a)| (*id, None, a)))
+    }
+
+    /// Like [`save_analyses`](Self::save_analyses), but each result is only applied if the
+    /// asset's `fast_fingerprint` still equals the one the analysis was computed for. A file
+    /// changed while being analyzed is therefore never overwritten with stale metadata.
+    pub fn save_analyses_checked(&mut self, items: &[(AssetId, String, Analysis)]) -> Result<()> {
+        self.save_analyses_iter(items.iter().map(|(id, fp, a)| (*id, Some(fp.as_str()), a)))
     }
 
     fn save_analyses_iter<'a>(
         &mut self,
-        items: impl Iterator<Item = (AssetId, &'a Analysis)>,
+        items: impl Iterator<Item = (AssetId, Option<&'a str>, &'a Analysis)>,
     ) -> Result<()> {
         let now = unix_now();
         let tx = self.conn.transaction()?;
@@ -388,7 +395,7 @@ impl Database {
                 "UPDATE assets SET content_hash = ?2, width = ?3, height = ?4,
                     vb_x = ?5, vb_y = ?6, vb_w = ?7, vb_h = ?8,
                     element_count = ?9, processing_state = ?10, parse_error = ?11
-                 WHERE id = ?1",
+                 WHERE id = ?1 AND (?12 IS NULL OR fast_fingerprint = ?12)",
             )?;
             let mut meta = tx.prepare_cached(
                 "INSERT OR REPLACE INTO svg_metadata (asset_id, doc_x, doc_y, doc_w, doc_h, node_count,
@@ -401,7 +408,7 @@ impl Database {
             )?;
             let mut del_text = tx.prepare_cached("DELETE FROM svg_text WHERE asset_id = ?1")?;
 
-            for (id, a) in items {
+            for (id, fingerprint, a) in items {
                 let id = id as i64;
                 let m = &a.meta;
                 let vb = m.view_box;
@@ -428,6 +435,7 @@ impl Database {
                     element_count,
                     a.state.as_str(),
                     a.error,
+                    fingerprint,
                 ])?;
                 if n == 0 {
                     continue;

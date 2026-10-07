@@ -199,7 +199,7 @@ The tests pass in both debug and release. Problem 4 and the observations remain 
 - **Regression tests:**
   - `massive_text_is_limit_exceeded_quickly`: a 200 KB run, a 10,001-character run, 1,000 × 250 characters and 20,000 × 250 characters.
   - `text_at_the_limits_renders_in_bounded_time`: a 10,000-character run and 100 × 1,000 characters still render.
-- **Side effect:** a `<text>` run over 10,000 characters is no longer truncated and indexed. The whole file is `limit_exceeded`, so its text is not searchable.
+- **Side effect (resolved):** a `<text>` run over 10,000 characters makes the file `limit_exceeded` (not rendered), but its text is still extracted (truncated to the caps) and stays searchable.
 
 ### 4. Text-heavy rendering cost (performance, environment-dependent)
 

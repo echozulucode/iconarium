@@ -94,6 +94,7 @@ pub async fn get_asset_detail(core: State<'_, Arc<AppCore>>, id: AssetId) -> Cmd
 
 #[tauri::command]
 pub async fn set_viewport(core: State<'_, Arc<AppCore>>, visible: Vec<AssetId>, nearby: Vec<AssetId>) -> CmdResult<()> {
-    core.queue.set_viewport(&visible, &nearby);
+    let waiting: std::collections::HashSet<AssetId> = core.waiters.lock().keys().copied().collect();
+    core.queue.set_viewport(&visible, &nearby, &waiting);
     Ok(())
 }

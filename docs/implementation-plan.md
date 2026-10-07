@@ -4,6 +4,33 @@ Source: `docs/plan.md` (product plan). This document turns that plan into an exe
 
 Status legend: ☐ planned · ◐ in progress · ☑ done · ⚠ needs Windows/Office manual validation
 
+## Status (2026-10-07)
+
+| Phase | Status | Evidence |
+|---|---|---|
+| A — Foundation & contracts | ☑ | Workspace, config, logging, contracts in `model.rs` / `types.ts` |
+| B — Core engine, index/search, UI | ☑ | About 110 core tests; 67 frontend tests; 26 mock-UI screenshots |
+| C — Tauri integration | ☑ (⚠ Office paste/drag) | App runs end to end; the Windows target type-checks, including clipboard-win and OLE drag code |
+| D — Datasets & hardening | ☑ | `docs/performance.md`; 3 robustness bugs found and fixed (nesting depth, text volume) |
+| E — Review, E2E, delivery | ☑ (⚠ manual Windows checks) | Independent review: 3 High, 4 Medium, 6 Low, fixed apart from the noted Low items; real-app E2E suite (`scripts/e2e`) passes; `docs/windows-validation.md` |
+
+### Deviations from the original plan (decided during build)
+
+| Topic | Change | Why |
+|---|---|---|
+| Clipboard on Windows | `clipboard-win` is used directly, with one clipboard open per copy: `image/svg+xml` → `PNG` → `CF_BITMAP` → optional text | clipboard-rs re-opens and closes the clipboard when it writes an image, which silently dropped the SVG format (review H1) |
+| Priority lanes | A **P4** lane for background thumbnail prefill was added under P3 analysis | Full-content search was waiting on thumbnail rendering (E2E: about 17 min for 10k diagrams on 1 worker) |
+| Limits | Added `maxNestingDepth` (256, enforced by a raw-markup pre-scan) and `maxRenderTextChars` (200k), and the per-run text cap is now enforced | Deep nesting overflowed parser/renderer stacks; MB-sized `<text>` made layout unbounded. Over-limit files remain searchable |
+| Linked images | `<image href>` only resolves `data:` URIs and relative raster files inside the SVG's folder (≤ 20 MB) | Stops absolute, UNC and `..` reads during background thumbnailing (review H2) |
+| Library switching | Switches are serialized; the generation is bumped first and re-checked under the catalog lock; scan and watcher are bound to a generation | Prevents assets of two libraries mixing in one catalog (review H3) |
+| Analysis persistence | `save_analyses_checked` only applies a result if the file's fingerprint is unchanged | A file edited mid-analysis kept stale metadata (review M1) |
+
+Known remaining limitations:
+- A root-level `transform` attribute is not compensated in crops (rare).
+- Search does not apply Unicode normalization (NFC/NFD).
+- Linked `.svg` images are not rendered in thumbnails.
+- Some documents analyze as Ready but fail to render: self-referencing `<use>`, `<use>` fan-out bombs, zero-size documents.
+
 ---
 
 ## 1. Ground rules carried from the product plan
@@ -88,13 +115,17 @@ Status legend: ☐ planned · ◐ in progress · ☑ done · ⚠ needs Windows/O
 ### 3.4 svg-core public API (consumed by src-tauri)
 
 ```text
-svg::analyze(bytes, &Limits) -> Analysis { meta: SvgMeta, text: SvgText, complexity, state }
-svg::render_thumbnail(bytes, size, &Limits) -> Result<Png>
+svg::analyze(bytes, &Limits) -> Analysis                       // never panics
+svg::renderer::render_thumbnail(bytes, size, &Limits, resources_dir) -> Result<Vec<u8>>
+svg::renderer::render_png(bytes, scale, Background, &Limits, resources_dir) -> Result<RenderedPng>
+svg::renderer::render_region_png(bytes, Region, scale, Background, &Limits, resources_dir) -> Result<RenderedPng>
+svg::renderer::png_to_bmp(png) -> Result<Vec<u8>>
 svg::crop::crop_svg(bytes, Region) -> Result<String>
-svg::render_region_png(bytes, Region, scale, Background) -> Result<Png>
-library::scanner::Scanner::run(root, existing: Snapshot, batch_size, cancel, on_batch) -> ScanSummary
-index::Database::{open, migrate, upsert_assets, mark_missing, save_analysis, load_catalog, libraries, settings}
-search::Catalog::{insert, update, remove, search(query) -> Vec<AssetId>, explain(id, query) -> Option<MatchInfo>}
+svg::normalize::prepare_for_viewer(bytes, &SvgMeta) -> Cow<[u8]>
+library::scanner::{scan(root, &ScanOptions, &cancel, on_batch) -> ScanStats, Reconciler, stat_one, to_relative}
+index::Database::{open, upsert_library, recent_libraries, library_snapshot, insert_assets, update_changed,
+                  remove_assets, save_analyses_checked, load_catalog, get_doc_box, load_settings, save_settings, …}
+search::Catalog::{extend, upsert, update_record, set_text, remove, search, explain, summaries}
 ```
 
 ---

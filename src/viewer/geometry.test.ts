@@ -208,3 +208,10 @@ describe("minimap", () => {
     expect(shouldShowMinimap(fitView(doc, vp), vp, doc)).toBe(false);
   });
 });
+
+describe("tiny coordinate systems", () => {
+  it("can still be zoomed to a usable display size", () => {
+    const tiny = docGeometry(null, null, { minX: 0, minY: 0, width: 1, height: 1 });
+    expect(zoomLimits(tiny).max * tiny.baseWidth).toBeGreaterThanOrEqual(1024);
+  });
+});

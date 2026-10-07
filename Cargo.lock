@@ -3950,6 +3950,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "clipboard-rs",
+ "clipboard-win",
  "crossbeam-channel",
  "drag",
  "notify",

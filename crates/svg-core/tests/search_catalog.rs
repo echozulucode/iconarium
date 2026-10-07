@@ -297,3 +297,12 @@ fn deterministic_ties_and_limit() {
     sorted_paths.sort();
     assert_eq!(paths, sorted_paths);
 }
+
+#[test]
+fn regex_anchor_matches_filename_in_subfolder() {
+    // '^' must anchor at the start of the filename even for nested files, including
+    // separators the normalized stem would have replaced.
+    let c = sample();
+    assert_eq!(search(&c, "re:^ethernet-"), vec![4]);
+    assert_eq!(search(&c, "re:^old-sw"), vec![8]);
+}

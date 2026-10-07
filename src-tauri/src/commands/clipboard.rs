@@ -31,6 +31,15 @@ fn clip_err(e: String) -> CmdError {
     CmdError::new("clipboard", e)
 }
 
+/// Intrinsic size used for PNG scaling: width/height, else the viewBox size
+/// (the common `viewBox="0 0 24 24"` icon form has no width/height).
+fn intrinsic(rec: &svg_core::model::AssetRecord) -> (Option<f64>, Option<f64>) {
+    match (rec.width, rec.height, rec.view_box) {
+        (None, None, Some(vb)) => (Some(vb.width), Some(vb.height)),
+        (w, h, _) => (w, h),
+    }
+}
+
 /// Scale for whole-asset PNG copies: 1× for normal documents, upscaled so tiny icons
 /// (e.g. 24 px) still paste at a usable size (longest side ≥ 256 px, at most 8×).
 pub fn asset_png_scale(width: Option<f64>, height: Option<f64>) -> f64 {
@@ -61,7 +70,7 @@ pub async fn copy_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, forma
                 let (rec, path) = &located[0];
                 let bytes = core.read_asset_bytes(rec, path)?;
                 let settings = core.settings();
-                let scale = asset_png_scale(rec.width, rec.height) * settings.clipboard_png_fallback_scale;
+                let scale = { let (w, h) = intrinsic(rec); asset_png_scale(w, h) } * settings.clipboard_png_fallback_scale;
                 let png = render_png(&bytes, scale, Background::Transparent, &settings.limits, path.parent()).ok();
                 clip::copy_svg(
                     &bytes,
@@ -78,7 +87,7 @@ pub async fn copy_assets(core: State<'_, Arc<AppCore>>, ids: Vec<AssetId>, forma
                 let bytes = core.read_asset_bytes(rec, path)?;
                 let limits = core.settings.read().limits.clone();
                 let bg = if matches!(format, AssetCopyFormat::PngWhite) { Background::White } else { Background::Transparent };
-                let png = render_png(&bytes, asset_png_scale(rec.width, rec.height), bg, &limits, path.parent())?;
+                let png = render_png(&bytes, { let (w, h) = intrinsic(rec); asset_png_scale(w, h) }, bg, &limits, path.parent())?;
                 clip::copy_png(&png.png).map_err(clip_err)
             }
         }

@@ -62,7 +62,9 @@ export function docGeometry(width: number | null, height: number | null, docBox:
 
 export function zoomLimits(doc: DocGeometry): { min: number; max: number } {
   const longest = Math.max(doc.baseWidth, doc.baseHeight);
-  const max = Math.min(MAX_ZOOM, MAX_DISPLAY_PX / longest);
+  // Absolute cap for normal documents; tiny coordinate systems (e.g. viewBox 0 0 1 1 with
+  // no size) may zoom further so they can still be shown at a usable size.
+  const max = Math.min(MAX_DISPLAY_PX / longest, Math.max(MAX_ZOOM, 1024 / longest));
   const min = Math.max(MIN_ZOOM, MIN_DISPLAY_PX / longest);
   return { min: Math.min(min, max), max: Math.max(min, max) };
 }

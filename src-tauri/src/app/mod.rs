@@ -54,7 +54,10 @@ pub struct AppCore {
     pub(crate) watcher: Mutex<Option<watch::WatchHandle>>,
     /// Counters for the "processing" status line.
     pub(crate) processed: AtomicU64,
-    pub(crate) scan_running: AtomicBool,
+    /// Generation of the scan currently running (0 = none).
+    pub(crate) scan_gen: AtomicU64,
+    /// Serializes library switches (startup restore vs. user pick).
+    pub(crate) open_lock: Mutex<()>,
     restore: (Mutex<bool>, Condvar),
 }
 
@@ -79,7 +82,8 @@ impl AppCore {
             scan_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
             watcher: Mutex::new(None),
             processed: AtomicU64::new(0),
-            scan_running: AtomicBool::new(false),
+            scan_gen: AtomicU64::new(0),
+            open_lock: Mutex::new(()),
             restore: (Mutex::new(false), Condvar::new()),
         }
     }
@@ -163,6 +167,42 @@ impl AppCore {
         let meta = analysis.meta.clone();
         let rec = crate::preview::worker::apply_analysis(self, rec, analysis);
         Ok((rec, meta))
+    }
+
+    /// Whether a discovery/reconcile pass for the *current* library is running.
+    pub fn scan_in_progress(&self) -> bool {
+        let g = self.scan_gen.load(Ordering::SeqCst);
+        g != 0 && g == self.generation()
+    }
+
+    /// Refresh the status line from queue state once no scan is running.
+    pub fn update_processing_status(&self) {
+        let analyzing = self.queue.analyze_pending();
+        let remaining = self.queue.len();
+        let processed = self.processed.load(Ordering::Relaxed) as usize;
+        self.events.update_status(|s| {
+            if remaining == 0 {
+                s.phase = events::ScanPhase::Idle;
+                s.message = "Indexed".into();
+            } else if analyzing > 0 {
+                s.phase = events::ScanPhase::Processing;
+                s.processed = processed;
+                s.total = processed + analyzing;
+                s.message = format!("Reading contents ({analyzing} left)");
+            } else {
+                // Contents fully indexed; only background thumbnail prefill remains.
+                s.phase = events::ScanPhase::Idle;
+                s.message = format!("Indexed · generating previews ({remaining} left)");
+            }
+        });
+    }
+
+    /// Whether any catalog asset lives under the directory `rel_dir` ('/'-separated).
+    pub fn has_assets_under(&self, rel_dir: &str) -> bool {
+        let prefix = format!("{}/", rel_dir.trim_end_matches('/'));
+        let cat = self.catalog.read();
+        let found = cat.ids().any(|id| cat.get(id).is_some_and(|r| r.relative_path.starts_with(&prefix)));
+        found
     }
 
     // ---- startup restore handshake -------------------------------------------------

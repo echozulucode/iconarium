@@ -354,8 +354,10 @@ impl CompiledQuery {
 
     fn regex_best(&self, re: &Regex, f: &Fields<'_>) -> Option<(u32, MatchField)> {
         // Multi-line mode: '^'/'$' anchor at field boundaries and '.' never crosses one,
-        // so a miss on the joined string is a miss in every field.
-        if !re.is_match(f.all) {
+        // so a miss on the joined string is a miss in every field — except that the
+        // filename is a suffix of the path line, so a '^'-anchored pattern can match the
+        // filename without matching any line start. Skip the prefilter for those.
+        if !re.as_str().contains('^') && !re.is_match(f.all) {
             return None;
         }
         if re.is_match(f.name) {

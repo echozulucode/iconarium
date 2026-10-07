@@ -1,6 +1,9 @@
 //! Bounded-priority work queue (plan §9).
 //!
-//! P0 currently visible · P1 just outside the viewport · P2 current search results · P3 rest.
+//! P0 currently visible · P1 just outside the viewport · P2 current search results ·
+//! P3 rest of the library (analysis) · P4 background thumbnail prefill.
+//! Analysis of the whole library (P3) completes before speculative thumbnail rendering
+//! (P4), so full-content search becomes complete as early as possible.
 //! One entry per asset; pushing an existing asset merges its job flags and can only raise
 //! its priority. Reprioritization is O(1) per asset using lazy deletion: lanes hold
 //! `(asset, seq)` pairs and a popped pair is skipped if its seq is no longer current.
@@ -13,7 +16,8 @@ pub const P0: u8 = 0;
 pub const P1: u8 = 1;
 pub const P2: u8 = 2;
 pub const P3: u8 = 3;
-const LANES: usize = 4;
+pub const P4: u8 = 4;
+const LANES: usize = 5;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct JobFlags {
@@ -45,17 +49,22 @@ struct State {
     lanes: [VecDeque<(AssetId, u64)>; LANES],
     seq: u64,
     shutdown: bool,
+    /// Number of queued entries with the `analyze` flag (for progress reporting).
+    analyze_count: usize,
     /// IDs the UI reported as visible/nearby in the last `set_viewport`.
     viewport: HashSet<AssetId>,
 }
 
 impl State {
     fn enqueue(&mut self, id: AssetId, prio: u8, flags: JobFlags) -> bool {
-        let prio = prio.min(P3);
+        let prio = prio.min(P4);
         self.seq += 1;
         let seq = self.seq;
         match self.entries.get_mut(&id) {
             Some(e) => {
+                if flags.analyze && !e.flags.analyze {
+                    self.analyze_count += 1;
+                }
                 e.flags = e.flags.merge(flags);
                 if prio < e.prio {
                     e.prio = prio;
@@ -67,6 +76,9 @@ impl State {
                 }
             }
             None => {
+                if flags.analyze {
+                    self.analyze_count += 1;
+                }
                 self.entries.insert(id, Entry { prio, flags, seq });
                 self.lanes[prio as usize].push_back((id, seq));
                 true
@@ -95,6 +107,9 @@ impl State {
                 if let Some(e) = self.entries.get(&id) {
                     if e.seq == seq {
                         let e = self.entries.remove(&id).unwrap();
+                        if e.flags.analyze {
+                            self.analyze_count -= 1;
+                        }
                         return Some((id, e.flags, e.prio));
                     }
                 }
@@ -154,19 +169,24 @@ impl WorkQueue {
         }
     }
 
-    /// Viewport changed: `visible` → P0 (thumb), `nearby` → P1 (thumb); anything that was
-    /// P0/P1 but is no longer in view is demoted to P3.
-    pub fn set_viewport(&self, visible: &[AssetId], nearby: &[AssetId]) {
+    /// Viewport changed: `visible` → P0 (thumb), `nearby` → P1 (thumb). Work that was P0
+    /// but is no longer in view is demoted: to P1 if a thumbnail request is still waiting
+    /// on it (`waiting`), so held-open requests drain promptly instead of sitting behind
+    /// the background backlog; otherwise to P3.
+    pub fn set_viewport(&self, visible: &[AssetId], nearby: &[AssetId], waiting: &HashSet<AssetId>) {
         let mut st = self.state.lock();
         let keep: HashSet<AssetId> = visible.iter().chain(nearby.iter()).copied().collect();
-        let demote: Vec<AssetId> = st
+        let demote: Vec<(AssetId, u8)> = st
             .entries
             .iter()
             .filter(|(id, e)| e.prio <= P1 && !keep.contains(id))
-            .map(|(id, _)| *id)
+            .map(|(id, e)| (*id, e.prio))
             .collect();
-        for id in demote {
-            st.set_prio(id, P3);
+        for (id, prio) in demote {
+            let target = if waiting.contains(&id) { P1 } else { P3 };
+            if target != prio {
+                st.set_prio(id, target);
+            }
         }
         // Only reprioritize work that is already queued (the thumbnail protocol enqueues
         // misses itself); this keeps cache hits from generating jobs.
@@ -238,6 +258,12 @@ impl WorkQueue {
             l.clear();
         }
         st.viewport.clear();
+        st.analyze_count = 0;
+    }
+
+    /// Queued entries that still need analysis.
+    pub fn analyze_pending(&self) -> usize {
+        self.state.lock().analyze_count
     }
 
     pub fn len(&self) -> usize {
@@ -288,10 +314,24 @@ mod tests {
         q.push(10, P0, JobFlags::THUMB);
         q.push(11, P0, JobFlags::THUMB);
         q.push(12, P3, JobFlags::THUMB);
-        q.set_viewport(&[12], &[]);
+        let waiting: HashSet<AssetId> = [11].into_iter().collect();
+        q.set_viewport(&[12], &[], &waiting);
         let order = drain(&q);
         assert_eq!(order[0], (12, P0));
-        assert!(order[1..].iter().all(|&(_, p)| p == P3));
+        assert_eq!(order[1], (11, P1)); // still awaited by a request
+        assert_eq!(order[2], (10, P3));
+    }
+
+    #[test]
+    fn analyze_counter_and_p4() {
+        let q = WorkQueue::new();
+        q.push_many(1..=3, P3, JobFlags::ANALYZE);
+        q.push(4, P4, JobFlags::THUMB);
+        q.push(1, P0, JobFlags::THUMB); // merge keeps count
+        assert_eq!(q.analyze_pending(), 3);
+        let order = drain(&q);
+        assert_eq!(order.last().unwrap(), &(4, P4));
+        assert_eq!(q.analyze_pending(), 0);
     }
 
     #[test]

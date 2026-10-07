@@ -28,6 +28,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 notify = "8"
 notify-debouncer-full = "0.7"
-clipboard-rs = "0.3"
 drag = "2"
 raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+clipboard-win = "5"
+
+[target.'cfg(not(windows))'.dependencies]
+clipboard-rs = "0.3"

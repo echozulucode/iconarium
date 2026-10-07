@@ -4,7 +4,7 @@ use super::events::{ChangeReason, ScanPhase};
 use super::{ActiveLibrary, AppCore};
 use crate::error::{CmdError, CmdResult};
 use crate::preview::cache;
-use crate::preview::queue::{JobFlags, P2, P3};
+use crate::preview::queue::{JobFlags, P2, P3, P4};
 use crate::preview::worker::fail_all_waiters;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,15 +37,18 @@ impl AppCore {
     pub fn open_library(self: &Arc<Self>, path: &str) -> CmdResult<LibraryInfo> {
         let root = normalize_root(path)?;
         let t0 = Instant::now();
+        // Library switches are serialized (startup restore vs. a user pick).
+        let _switch = self.open_lock.lock();
 
-        // Stop everything belonging to the previous library.
+        // Stop everything belonging to the previous library. The generation is bumped
+        // *first*, so any in-flight batch/job of the old library fails its generation check.
+        let gen = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         self.scan_cancel.lock().store(true, Ordering::SeqCst);
         *self.watcher.lock() = None;
-        self.generation.fetch_add(1, Ordering::SeqCst);
         self.queue.clear();
         fail_all_waiters(self);
 
-        let root_str = root.to_string_lossy().into_owned();
+        let root_str = self.canonical_library_path(&root);
         let (info, items) = {
             let mut db = self.db.lock();
             let info = db.upsert_library(&root_str, &display_name(&root))?;
@@ -54,11 +57,12 @@ impl AppCore {
         };
         let total = items.len();
         {
+            // Swap catalog and active library together so readers never see a mix.
             let mut cat = self.catalog.write();
             cat.clear();
             cat.extend(items);
+            *self.active.write() = Some(ActiveLibrary { info: info.clone(), root: root.clone() });
         }
-        *self.active.write() = Some(ActiveLibrary { info: info.clone(), root: root.clone() });
         self.processed.store(0, Ordering::Relaxed);
         self.events.update_status(|s| {
             s.phase = if total > 0 { ScanPhase::Reconciling } else { ScanPhase::Discovering };
@@ -77,9 +81,9 @@ impl AppCore {
         std::thread::Builder::new()
             .name("scanner".into())
             .spawn(move || {
-                core.run_scan(lib_id, &root, &cancel, total == 0);
-                if !cancel.load(Ordering::SeqCst) {
-                    core.start_watcher(lib_id, &root);
+                core.run_scan(lib_id, &root, &cancel, total == 0, gen);
+                if !cancel.load(Ordering::SeqCst) && core.generation() == gen {
+                    core.start_watcher(lib_id, &root, gen);
                 }
             })
             .map_err(CmdError::from)?;
@@ -100,9 +104,11 @@ impl AppCore {
     }
 
     /// Progressive discovery + reconciliation against the persisted index.
-    pub(crate) fn run_scan(self: &Arc<Self>, lib_id: LibraryId, root: &Path, cancel: &AtomicBool, first_scan: bool) {
-        self.scan_running.store(true, Ordering::SeqCst);
-        let gen = self.generation();
+    pub(crate) fn run_scan(self: &Arc<Self>, lib_id: LibraryId, root: &Path, cancel: &AtomicBool, first_scan: bool, gen: u64) {
+        if self.generation() != gen {
+            return;
+        }
+        self.scan_gen.store(gen, Ordering::SeqCst);
         let t0 = Instant::now();
         let settings = self.settings();
         let opts = ScanOptions { batch_size: settings.scan_batch_size, ignore_hidden: settings.ignore_hidden, follow_links: false };
@@ -110,7 +116,7 @@ impl AppCore {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("snapshot failed: {e}");
-                self.scan_running.store(false, Ordering::SeqCst);
+                let _ = self.scan_gen.compare_exchange(gen, 0, Ordering::SeqCst, Ordering::SeqCst);
                 return;
             }
         };
@@ -148,6 +154,11 @@ impl AppCore {
                     cache::remove_thumb(&thumbs_dir, id, &fp, thumb_size);
                 }
                 let mut cat = self.catalog.write();
+                // Re-check under the catalog lock: a library switch swaps the catalog
+                // while holding this lock, so this batch can never land in another library.
+                if self.generation() != gen {
+                    return;
+                }
                 for rec in new_recs.into_iter().chain(changed_recs) {
                     changed_ids.push(rec.id);
                     cat.upsert(rec, None);
@@ -177,7 +188,7 @@ impl AppCore {
             Ok(stats) if !cancelled && !stats.cancelled => {
                 let removed = reconciler.finish();
                 if !removed.is_empty() {
-                    self.remove_assets(&removed);
+                    self.remove_assets(&removed, gen);
                 }
                 let _ = self.db.lock().set_library_scanned(lib_id, crate::util::unix_now());
                 tracing::info!(
@@ -199,23 +210,18 @@ impl AppCore {
                 });
             }
         }
-        self.scan_running.store(false, Ordering::SeqCst);
+        let _ = self.scan_gen.compare_exchange(gen, 0, Ordering::SeqCst, Ordering::SeqCst);
         if !cancelled {
             let remaining = self.queue.len();
             let total = self.catalog.read().len();
             self.events.set_total(total);
             self.events.catalog_changed(ChangeReason::Scan);
+            let _ = remaining;
             self.events.update_status(|s| {
                 s.total = total;
                 s.discovered = total;
-                if remaining == 0 {
-                    s.phase = ScanPhase::Idle;
-                    s.message = "Indexed".into();
-                } else {
-                    s.phase = ScanPhase::Processing;
-                    s.message = format!("Processing {remaining} remaining");
-                }
             });
+            self.update_processing_status();
         }
     }
 
@@ -240,11 +246,11 @@ impl AppCore {
                 .into_iter()
                 .filter(|(id, fp)| !cache::thumb_path(&self.paths.thumbs_dir, *id, fp, size).exists())
                 .map(|(id, _)| id);
-            self.queue.push_many(missing, P3, JobFlags::THUMB);
+            self.queue.push_many(missing, P4, JobFlags::THUMB);
         }
     }
 
-    pub(crate) fn remove_assets(&self, ids: &[AssetId]) {
+    pub(crate) fn remove_assets(&self, ids: &[AssetId], gen: u64) {
         if ids.is_empty() {
             return;
         }
@@ -252,18 +258,43 @@ impl AppCore {
             tracing::error!("remove_assets: {e}");
         }
         let size = self.settings.read().thumbnail_size;
-        let mut cat = self.catalog.write();
-        for &id in ids {
-            if let Some(r) = cat.get(id) {
-                cache::remove_thumb(&self.paths.thumbs_dir, id, &r.fast_fingerprint, size);
+        let stale: Vec<(AssetId, String)> = {
+            let mut cat = self.catalog.write();
+            if self.generation() != gen {
+                return;
             }
-            cat.remove(id);
+            let stale = ids.iter().filter_map(|&id| cat.get(id).map(|r| (id, r.fast_fingerprint.clone()))).collect();
+            for &id in ids {
+                cat.remove(id);
+            }
+            self.events.set_total(cat.len());
+            stale
+        };
+        // File deletion happens outside the catalog lock so search never stalls on I/O.
+        for (id, fp) in stale {
+            cache::remove_thumb(&self.paths.thumbs_dir, id, &fp, size);
         }
-        self.events.set_total(cat.len());
+    }
+
+    /// On Windows, paths are case-insensitive: reuse the stored spelling of an existing
+    /// library so `C:\Lib` and `c:\lib` don't become two libraries.
+    fn canonical_library_path(&self, root: &Path) -> String {
+        let s = root.to_string_lossy().into_owned();
+        if cfg!(windows) {
+            if let Ok(libs) = self.db.lock().recent_libraries(10_000) {
+                if let Some(l) = libs.into_iter().find(|l| l.path.eq_ignore_ascii_case(&s)) {
+                    return l.path;
+                }
+            }
+        }
+        s
     }
 
     /// Apply watcher-reported changes for individual relative paths.
-    pub(crate) fn apply_path_changes(&self, lib_id: LibraryId, root: &Path, rel_paths: &[String]) {
+    pub(crate) fn apply_path_changes(&self, lib_id: LibraryId, root: &Path, rel_paths: &[String], gen: u64) {
+        if self.generation() != gen {
+            return;
+        }
         let settings = self.settings();
         let size = settings.thumbnail_size;
         let mut removed: Vec<AssetId> = Vec::new();
@@ -288,11 +319,14 @@ impl AppCore {
                 (None, None) => {}
             }
         }
-        self.remove_assets(&removed);
+        self.remove_assets(&removed, gen);
         if !touched.is_empty() {
             let ids: Vec<AssetId> = touched.iter().map(|r| r.id).collect();
             {
                 let mut cat = self.catalog.write();
+                if self.generation() != gen {
+                    return;
+                }
                 for rec in touched {
                     cat.upsert(rec, None);
                 }
@@ -306,16 +340,16 @@ impl AppCore {
     }
 
     /// Full reconcile requested by the watcher (bursts, directory renames, overflow).
-    pub(crate) fn reconcile_now(self: &Arc<Self>, lib_id: LibraryId, root: &Path) {
+    pub(crate) fn reconcile_now(self: &Arc<Self>, lib_id: LibraryId, root: &Path, gen: u64) {
         let cancel = self.scan_cancel.lock().clone();
-        if cancel.load(Ordering::SeqCst) {
+        if cancel.load(Ordering::SeqCst) || self.generation() != gen {
             return;
         }
         // Avoid overlapping with an in-flight scan: wait briefly for it to finish.
         let deadline = Instant::now() + Duration::from_secs(30);
-        while self.scan_running.load(Ordering::SeqCst) && Instant::now() < deadline {
+        while self.scan_in_progress() && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(100));
         }
-        self.run_scan(lib_id, root, &cancel, false);
+        self.run_scan(lib_id, root, &cancel, false, gen);
     }
 }
