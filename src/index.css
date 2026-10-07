@@ -1,1 +1,238 @@
 @import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Theme tokens. Light is the default; dark follows prefers-color-scheme.
+   Graphite neutrals + a single cobalt accent. No decorative gradients/shadows;
+   elevation is expressed with a 1px border and a faint ambient shadow only on
+   floating surfaces (menus, dialogs, toasts).
+--------------------------------------------------------------------------- */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --elevated: #ffffff;
+  --tile: #eef0f3;
+  --tile-hover: #e6e9ee;
+  --border: #e1e4e9;
+  --border-strong: #cdd2da;
+  --fg: #16191f;
+  --fg-muted: #5b636f;
+  --fg-subtle: #8a929e;
+  --accent: #2856d8;
+  --accent-hover: #1f47bd;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(40, 86, 216, 0.1);
+  --accent-ring: rgba(40, 86, 216, 0.45);
+  --danger: #c4372b;
+  --danger-soft: rgba(196, 55, 43, 0.09);
+  --warning: #a86500;
+  --success: #1d8a4e;
+  --shadow-float: 0 12px 32px -8px rgba(22, 25, 31, 0.18), 0 2px 6px rgba(22, 25, 31, 0.06);
+  --scrim: rgba(17, 20, 26, 0.32);
+  --checker-a: #ffffff;
+  --checker-b: #e9ebef;
+  --viewer-dark: #1b1e23;
+  --region-dim: rgba(14, 17, 22, 0.42);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131519;
+    --surface: #181b20;
+    --surface-2: #1f2228;
+    --elevated: #22262d;
+    --tile: #1f2329;
+    --tile-hover: #262a31;
+    --border: #2a2e36;
+    --border-strong: #3a3f49;
+    --fg: #e8eaee;
+    --fg-muted: #a1a8b3;
+    --fg-subtle: #6f7682;
+    --accent: #6e95ff;
+    --accent-hover: #86a7ff;
+    --accent-fg: #0d1222;
+    --accent-soft: rgba(110, 149, 255, 0.14);
+    --accent-ring: rgba(110, 149, 255, 0.55);
+    --danger: #ff7b6e;
+    --danger-soft: rgba(255, 123, 110, 0.12);
+    --warning: #f0b24a;
+    --success: #4cc283;
+    --shadow-float: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.35);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --checker-a: #2a2d33;
+    --checker-b: #22252a;
+    --viewer-dark: #0f1114;
+    --region-dim: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-elevated: var(--elevated);
+  --color-tile: var(--tile);
+  --color-tile-hover: var(--tile-hover);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+    "Helvetica Neue", Roboto, "Noto Sans", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+    "Helvetica Neue", Roboto, sans-serif;
+  --shadow-float: var(--shadow-float);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus ring used by every interactive element. */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+/* Thin, quiet scrollbars. */
+.scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.scroll-quiet::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scroll-quiet::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.scroll-quiet::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.checkerboard {
+  background-color: var(--checker-a);
+  background-image:
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.skeleton {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  animation: pop-in 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade-in {
+  animation: fade-in 160ms ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.toast-in {
+  animation: toast-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .pop-in,
+  .fade-in,
+  .toast-in,
+  .spin {
+    animation: none;
+  }
+  * {
+    transition-duration: 0ms !important;
+  }
+}
