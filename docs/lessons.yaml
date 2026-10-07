@@ -145,3 +145,12 @@ lessons:
       (here, locked by Windows), the stale working copy gets committed and silently reverts newer
       content. Check `git status` before `-am`.
     applied: false
+
+  - id: 17
+    date: 2026-10-07
+    source: "issue-20"
+    category: tooling
+    lesson: |
+      Pin the Rust toolchain (rust-toolchain.toml plus the CI action) whenever clippy runs with
+      `-D warnings`. Toolchain bumps then become deliberate: change the version, run `just ci`, fix.
+    applied: true

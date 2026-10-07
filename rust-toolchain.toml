@@ -1,0 +1,7 @@
+# Pinned so CI lints with exactly the compiler/clippy the code was verified against. New stable
+# releases add clippy lints, and with `-D warnings` an unpinned toolchain turns every release into
+# a surprise CI failure. Bump deliberately: change the version here, run `just ci`, fix, commit.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

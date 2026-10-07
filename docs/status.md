@@ -23,6 +23,8 @@ next_actions:
 - The first CI run (37620355058) failed at `cargo fmt --check`: a test was edited after the last format pass (issue 19). Fixed, and the full `just ci` gate was run locally.
 - 6aff95a also reverted the `docs/plan.md` tracking sections, because Windows had the file locked and `git commit -am` picked up the stale copy. Restored them; the stale copy was moved to `docs/.plan.md.stale`.
 
+- The second CI run failed on two clippy lints that are new in Rust 1.99 (CI used `stable`; local verification used 1.97). Fixed both and pinned the toolchain to 1.97.0 in `rust-toolchain.toml` and all workflows (issue 20). `just ci` is green on 1.97.0.
+
 **Outcome:** Ready to re-push. Next: confirm a green CI run, then do the release dry run or the first tag.
 
 ---

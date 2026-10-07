@@ -18,7 +18,7 @@ Windows SmartScreen warns on first run because the installer isn't Authenticode-
 ## Build on Windows
 
 Prerequisites:
-- Rust stable (MSVC toolchain): `rustup default stable-x86_64-pc-windows-msvc`
+- Rust via rustup with the MSVC host (`rustup default stable-x86_64-pc-windows-msvc`); the pinned version in `rust-toolchain.toml` (1.97.0) installs automatically on first build
 - Visual Studio 2022 Build Tools with the "Desktop development with C++" workload
 - Node.js 20 or newer
 - WebView2 Runtime. Windows 11 includes it, and the installer embeds a bootstrapper.

@@ -126,8 +126,7 @@ pub fn parse(query: &str) -> ParsedQuery {
             }
         }
         let quoted = trimmed[pos..].starts_with('"');
-        let raw: &str;
-        if quoted {
+        let raw: &str = if quoted {
             chars.next(); // opening quote
             let body_start = pos + 1;
             // An unterminated quote runs to the end of the query.
@@ -138,7 +137,7 @@ pub fn parse(query: &str) -> ParsedQuery {
                     break;
                 }
             }
-            raw = &trimmed[body_start..end];
+            &trimmed[body_start..end]
         } else {
             let mut end = trimmed.len();
             while let Some(&(i, ch)) = chars.peek() {
@@ -148,8 +147,8 @@ pub fn parse(query: &str) -> ParsedQuery {
                 }
                 chars.next();
             }
-            raw = &trimmed[pos..end];
-        }
+            &trimmed[pos..end]
+        };
         let text = normalize_text(raw);
         if text.is_empty() {
             continue;

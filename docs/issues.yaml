@@ -214,3 +214,18 @@ issues:
         outcome: "Green locally; needs a re-push"
     resolution: "Formatting fixed"
     lesson: "Run exactly the CI gate (`just ci`) before every hand-off, not a subset."
+
+  - id: 20
+    date: 2026-10-07
+    title: "Second CI run failed: clippy lints that only exist in Rust 1.99"
+    status: resolved
+    description: |
+      CI installed `stable` (1.99), which added clippy lints `needless_late_init` (search/query.rs)
+      and `chunks_exact_to_as_chunks` (svg/parser.rs); `-D warnings` turned them into errors. Local
+      verification used 1.97, and 1.99 cannot be downloaded in the build environment.
+    attempts:
+      - date: 2026-10-07
+        action: "Fixed both lints; pinned the toolchain to 1.97.0 in rust-toolchain.toml and in all three workflows"
+        outcome: "`just ci` green on 1.97.0 locally; CI now uses the same compiler and clippy"
+    resolution: "Pinned toolchain; bump deliberately with `just ci`"
+    lesson: "With `-D warnings`, pin the Rust toolchain. Otherwise every stable release can break CI with new lints."
