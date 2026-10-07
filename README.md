@@ -16,12 +16,15 @@ Prerequisites:
 - Visual Studio 2022 Build Tools with the "Desktop development with C++" workload
 - Node.js 20 or newer
 - WebView2 Runtime. Windows 11 includes it, and the installer embeds a bootstrapper.
+- [just](https://just.systems): `winget install Casey.Just` (or `cargo install just`)
 
 ```powershell
-npm install
-npm run tauri dev          # dev mode with hot reload
-npm run tauri build        # release build + NSIS/MSI installers in target/release/bundle/
+just dev        # dev mode: Vite hot reload + Rust backend (installs npm deps on first run)
+just build      # release build + NSIS/MSI installers in target/release/bundle/
+just            # list every recipe (test, check, datasets, bench, dev-ui, …)
 ```
+
+Without just: `npm install`, then `npm run tauri dev` / `npm run tauri build`.
 
 The app runs fully offline. The index and thumbnail cache live in `%LOCALAPPDATA%\com.svglibrary.browser\`. Logs go to `%LOCALAPPDATA%\com.svglibrary.browser\logs\`, with one rolling file per day.
 
@@ -42,12 +45,11 @@ docs/                 plan, implementation plan, performance, Windows validation
 ## Develop and test
 
 ```sh
-cargo test -p svg-core                 # core: ~110 tests incl. pathological inputs
-cargo test -p svg-library-browser      # app shell unit tests (queue, cache, settings…)
-npm test                               # frontend unit tests (geometry, selection, search mock…)
-npm run dev                            # UI in a plain browser against the mock backend
-scripts/gen-datasets.sh all            # deterministic datasets A–E into ./datasets
-cargo run -p svg-core --release --example bench_pipeline -- datasets/C
+just test              # all Rust + frontend tests (core includes pathological inputs)
+just check             # tsc + clippy
+just dev-ui            # UI in a plain browser against the mock backend (no Rust build)
+just datasets          # deterministic test libraries A–E into ./datasets
+just bench datasets/C  # core pipeline benchmark on the 50k-file library
 ```
 
 `scripts/e2e/README.md` covers end-to-end tests of the real app on Linux, using Xvfb and tauri-driver.
