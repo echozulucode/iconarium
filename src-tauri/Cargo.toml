@@ -1,0 +1,33 @@
+[package]
+name = "svg-library-browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SVG Library Browser desktop application"
+
+[lib]
+name = "svg_library_browser_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+svg-core = { path = "../crates/svg-core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+crossbeam-channel.workspace = true
+blake3.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+notify = "8"
+notify-debouncer-full = "0.7"
+clipboard-rs = "0.3"
+drag = "2"
+raw-window-handle = "0.6"

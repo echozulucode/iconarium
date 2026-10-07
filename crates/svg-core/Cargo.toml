@@ -1,0 +1,24 @@
+[package]
+name = "svg-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Headless core for the SVG Library Browser: scanning, indexing, search, SVG analysis, rendering and cropping."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+blake3.workspace = true
+roxmltree = "0.21"
+resvg = { version = "0.48", default-features = false, features = ["text", "system-fonts", "memmap-fonts", "raster-images"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+walkdir = "2"
+globset = "0.4"
+regex = "1"
+memchr = "2"
+
+[dev-dependencies]
+tempfile = "3"
