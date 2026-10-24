@@ -81,3 +81,21 @@ Settings live in the `settings` table (JSON) and are exposed through `update_set
 | D7 | Open `C:\Lib` and later `c:\lib` | Treated as the same library, with no re-index | |
 | D8 | Reveal in Explorer with multiple files in one folder | One Explorer window with all of them selected | |
 | D9 | High-DPI display (150–200%) | Crisp thumbnails and viewer; selection handles are aligned | |
+
+## E. CLI and MCP server (docs/mcp.md)
+
+Build the installer with `just build-unsigned` (it bundles `iconarium-cli.exe`), install it, and open at least two libraries in the app first.
+
+| # | Check | Expected | Result |
+|---|---|---|---|
+| E1 | Fresh install, then a **new** PowerShell: `iconarium-cli doctor` | `iconarium-cli.exe` sits next to `Iconarium.exe` in `%LOCALAPPDATA%\Iconarium`; doctor reports the index and your libraries | |
+| E2 | PATH is intact: `reg query HKCU\Environment /v Path` before and after install | Same entries plus the Iconarium folder; still `REG_EXPAND_SZ`; entries like `%USERPROFILE%\...` unexpanded. Reinstalling doesn't duplicate the entry | |
+| E3 | `iconarium-cli search router`, `--json search router`, `preview <ids> -o s.png`, `export <id> --to out --png` | Results; JSON parses; sheet shows icons with labels (Segoe UI); PNG written | |
+| E4 | Claude Desktop config (docs/mcp.md), restart, ask "find me a router icon and show me options" | Tools listed under connectors; search, then a preview image appears in the chat; no errors in `%APPDATA%\Claude\logs\mcp-server-iconarium.log` | |
+| E5 | `claude mcp add --transport stdio --scope user iconarium -- "$env:LOCALAPPDATA\Iconarium\iconarium-cli.exe" mcp`, then `/mcp` in Claude Code | `iconarium` connected; tools callable | |
+| E6 | With `--allow-write C:\temp\icons --allow-tagging`: export and tag | Files written only under `C:\temp\icons`; `iconarium.yaml` appears in the library root; tag search finds the icon | |
+| E7 | Keep Claude Desktop running (server alive), then install a newer build over it | Installer completes (CLI process ended by the hook); server reconnects on next use | |
+| E8 | App indexing a large library while the MCP server is used | No errors or slowdowns; newly analyzed files show up in search within a few seconds | |
+| E9 | Uninstall | `iconarium-cli.exe` gone; PATH entry removed; other PATH entries untouched | |
+| E10 | Library path with spaces and non-ASCII (e.g. `C:\Users\me\Desktop\Ícones Ünicode`) | Search, preview and export work; absPath correct | |
+| E11 | Machine where PowerShell scripts are blocked by policy (if available) | Install still succeeds; the installer's details show "could not update PATH"; `iconarium-cli` works by full path | |

@@ -1,0 +1,38 @@
+[package]
+name = "iconarium-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Search, preview and export icons from Iconarium libraries; MCP server for LLM clients (`iconarium-cli mcp`)."
+
+[[bin]]
+# Not `iconarium`: the app's executable is Iconarium.exe and Windows file names are
+# case-insensitive.
+name = "iconarium-cli"
+path = "src/main.rs"
+
+[dependencies]
+iconarium-catalog = { path = "../iconarium-catalog", features = ["schema"] }
+svg-core = { path = "../svg-core" }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+clap = { version = "4.6", features = ["derive", "env"] }
+# MCP SDK. Pin both crates exactly: rmcp's own dependency on rmcp-macros is a caret
+# requirement, so an unpinned build mixes versions. Bump deliberately (protocol churn).
+rmcp = { version = "=3.5.1", default-features = false, features = ["server", "macros", "transport-io", "schemars", "base64"] }
+rmcp-macros = "=3.5.1"
+schemars = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+base64 = "0.22"
+
+[dev-dependencies]
+iconarium-catalog = { path = "../iconarium-catalog", features = ["schema", "fixtures"] }
+rmcp = { version = "=3.5.1", default-features = false, features = ["client", "transport-child-process", "server", "macros", "schemars", "base64"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process"] }
+tempfile = "3"

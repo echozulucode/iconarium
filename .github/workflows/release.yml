@@ -4,7 +4,7 @@ name: Release
 # `just bump` deliberately stops short of pushing: the tag push is what starts a release.
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -73,6 +73,7 @@ jobs:
           releaseName: Iconarium ${{ github.ref_name }}
           # Draft on purpose: smoke-test the installer and edit the notes before publishing.
           # `latest/download/latest.json` ignores drafts, so clients see nothing until you publish.
+          args: --config src-tauri/tauri.bundle.conf.json
           releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true

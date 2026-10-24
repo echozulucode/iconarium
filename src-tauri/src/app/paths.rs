@@ -20,7 +20,7 @@ impl AppPaths {
         let cache = pr.app_cache_dir().unwrap_or_else(|_| data.join("cache"));
         let log_dir = pr.app_log_dir().unwrap_or_else(|_| data.join("logs"));
         let paths = Self {
-            db_path: data.join("library-index.sqlite3"),
+            db_path: data.join(svg_core::paths::INDEX_FILE_NAME),
             thumbs_dir: cache.join("thumbnails"),
             tmp_dir: cache.join("tmp"),
             log_dir,

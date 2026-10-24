@@ -2,7 +2,8 @@
 //!
 //! Public API (contract, see docs/implementation-plan.md §3.4):
 //! * [`analyze`] — bytes → [`Analysis`] (hash, limits, metadata, searchable text). Never panics.
-//! * [`renderer::render_thumbnail`] — bytes → transparent PNG fitted in size×size.
+//! * [`renderer::render_thumbnail`] — bytes → transparent PNG fitted in size×size
+//!   ([`renderer::render_thumbnail_pixmap`] / [`renderer::render_pixmap`] skip PNG encoding).
 //! * [`renderer::render_png`] — full document at CSS size × scale (pixel-capped).
 //! * [`crop::crop_svg`] — bytes + region → normalized standalone SVG string (viewBox 0 0 w h).
 //! * [`renderer::render_region_png`] — bytes + region → PNG at scale with optional white bg.
@@ -25,8 +26,12 @@ use crate::model::{Analysis, Complexity, ProcessingState, SearchText, SvgMeta};
 pub use crop::crop_svg;
 pub use normalize::prepare_for_viewer;
 pub use renderer::{
-    render_png, render_region_png, render_thumbnail, warm_up_fonts, Background, RenderedPng,
+    render_pixmap, render_png, render_region_png, render_thumbnail, render_thumbnail_pixmap,
+    warm_up_fonts, Background, RenderedPng,
 };
+/// The rasterizer's pixmap type and drawing API, re-exported so callers that composite
+/// rendered output (e.g. contact sheets) use the exact same tiny-skia version.
+pub use resvg::tiny_skia;
 
 /// Bump whenever rendering output changes; part of the thumbnail cache key.
 pub const RENDERER_VERSION: u32 = 1;

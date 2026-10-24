@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/svg-core", "src-tauri"]
+members = ["crates/svg-core", "crates/iconarium-catalog", "crates/iconarium-cli", "src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

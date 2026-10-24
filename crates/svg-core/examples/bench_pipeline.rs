@@ -41,7 +41,7 @@ use svg_core::model::{
 use svg_core::search::Catalog;
 use svg_core::svg::{
     analyze, crop_svg, prepare_for_viewer, render_region_png, render_thumbnail, warm_up_fonts,
-    Background, RENDERER_VERSION,
+    Background,
 };
 
 const THUMB: u32 = 256;
@@ -213,10 +213,7 @@ fn parallel<T: Send>(
 }
 
 fn thumb_path(dir: &Path, id: AssetId, fingerprint: &str) -> PathBuf {
-    // Same layout as src-tauri/src/preview/cache.rs.
-    dir.join(format!("{:02x}", id % 256)).join(format!(
-        "{id}-{fingerprint}-r{RENDERER_VERSION}-s{THUMB}.png"
-    ))
+    svg_core::paths::thumb_path(dir, id, fingerprint, THUMB)
 }
 
 fn oversize(size: u64) -> Analysis {
@@ -673,7 +670,7 @@ fn main() {
             db.record_thumbnail(
                 r.id,
                 THUMB,
-                &format!("{}-r{RENDERER_VERSION}-s{THUMB}", r.fast_fingerprint),
+                &svg_core::paths::thumb_cache_key(&r.fast_fingerprint, THUMB),
             )
             .unwrap();
         }

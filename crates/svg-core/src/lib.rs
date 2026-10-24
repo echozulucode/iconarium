@@ -4,12 +4,14 @@
 //! * [`index`]   — persistent SQLite catalog (migrations, assets, metadata, text, thumbnails, settings).
 //! * [`svg`]     — analysis (metadata, text extraction, complexity limits), rendering, cropping.
 //! * [`search`]  — in-memory catalog with token/glob/regex search, ranking and match explanations.
+//! * [`paths`]   — the app's data/cache/log directories and thumbnail cache layout (shared with the CLI).
 
 pub mod config;
 pub mod error;
 pub mod index;
 pub mod library;
 pub mod model;
+pub mod paths;
 pub mod search;
 pub mod svg;
 

@@ -1,18 +1,11 @@
 //! On-disk thumbnail cache. Key = fingerprint (path+size+mtime) + renderer version + size,
 //! so any file change or renderer upgrade naturally misses the cache.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use svg_core::model::AssetId;
-use svg_core::svg::RENDERER_VERSION;
 
-pub fn cache_key(fingerprint: &str, size: u32) -> String {
-    format!("{fingerprint}-r{RENDERER_VERSION}-s{size}")
-}
-
-pub fn thumb_path(dir: &Path, id: AssetId, fingerprint: &str, size: u32) -> PathBuf {
-    dir.join(format!("{:02x}", id % 256))
-        .join(format!("{id}-{}.png", cache_key(fingerprint, size)))
-}
+// Key and layout live in svg-core so the CLI/MCP server read the same cache.
+pub use svg_core::paths::{thumb_cache_key as cache_key, thumb_path};
 
 /// Atomically write a thumbnail (write temp + rename) so readers never see partial files.
 pub fn write_thumb(path: &Path, png: &[u8]) -> std::io::Result<()> {
@@ -42,6 +35,7 @@ pub fn remove_thumb(dir: &Path, id: AssetId, fingerprint: &str, size: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use svg_core::svg::RENDERER_VERSION;
     #[test]
     fn key_and_path_layout() {
         let p = thumb_path(Path::new("/c"), 300, "abcd", 256);

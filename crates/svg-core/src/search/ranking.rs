@@ -315,6 +315,26 @@ impl CompiledQuery {
         Some(s as i64 * SCALE - penalty.clamp(0, MAX_PENALTY))
     }
 
+    /// The highest-priority field the query matched (any field, including filename and
+    /// path), or `None` if the asset does not match. Complements [`Self::explain_location`],
+    /// which only reports content fields.
+    pub fn primary_field(&self, f: &Fields<'_>) -> Option<MatchField> {
+        if let Some(re) = &self.regex {
+            return Some(self.regex_best(re, f)?.1);
+        }
+        let mut best: Option<(u32, MatchField)> = None;
+        for m in &self.include {
+            let hit = m.best(f)?;
+            if best.is_none_or(|b| hit.0 > b.0) {
+                best = Some(hit);
+            }
+        }
+        if self.exclude.iter().any(|m| m.best(f).is_some()) {
+            return None;
+        }
+        best.map(|b| b.1)
+    }
+
     fn bonus(&self, f: &Fields<'_>) -> u32 {
         let mut b = 0;
         if let Some(ex) = &self.exact {

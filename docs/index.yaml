@@ -1,6 +1,6 @@
 project: "Iconarium"
 created: 2026-10-06
-updated: 2026-10-07
+updated: 2026-10-23
 docs:
   - file: docs/plan.md
     type: plan
@@ -31,3 +31,23 @@ docs:
     type: reference
     status: active
     note: "Manual Windows/Office checklist (issues 16, 17)"
+  - file: docs/excalidraw-feasibility.md
+    type: reference
+    status: active
+    note: "Excalidraw .excalidrawlib support: format, spike results, options; §8 = chosen standalone converter"
+  - file: tools/excalidraw-to-svg/README.md
+    type: reference
+    status: active
+    note: "Excalidraw library → SVG folder converter (just excalidraw): usage, options, limits"
+  - file: docs/mcp-cli-plan.md
+    type: plan
+    status: implemented
+    note: "iconarium-cli + MCP server (Rust, rmcp): architecture, tools, tags, phases M0–M4"
+  - file: docs/mcp.md
+    type: reference
+    status: active
+    note: "iconarium-cli and MCP server: install, client setup, tools, CLI reference"
+  - file: docs/library-metadata.md
+    type: reference
+    status: active
+    note: "iconarium.yaml format 1: library/folder/asset titles, descriptions, tags"

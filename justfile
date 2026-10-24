@@ -24,14 +24,14 @@ dev-ui: deps
 # first fails in a second instead of after a multi-minute compile that leaves an .exe without a
 # .sig (which can never be offered as an update).
 
-# Signed release installer (NSIS) in target/release/bundle/nsis/ — needs TAURI_SIGNING_PRIVATE_KEY
+# Signed release installer (NSIS, bundles iconarium-cli) in target/release/bundle/nsis/ — needs TAURI_SIGNING_PRIVATE_KEY
 build: deps
     @node tools/updater-key.mjs --check
-    npm run tauri build
+    npm run tauri build -- --config src-tauri/tauri.bundle.conf.json
 
 # Installer WITHOUT updater signing — local testing only, never for a release
 build-unsigned: deps
-    npm run tauri build -- --config src-tauri/tauri.unsigned.conf.json
+    npm run tauri build -- --config src-tauri/tauri.bundle.conf.json --config src-tauri/tauri.unsigned.conf.json
 
 # Debug build of the app without installers
 build-debug: deps
@@ -44,6 +44,18 @@ deps:
 # Reinstall JavaScript dependencies unconditionally
 install:
     npm install --no-audit --no-fund
+
+# Runs from your current folder, so relative paths work. Paths with spaces: call the cli.mjs directly.
+# Convert Excalidraw libraries to SVG folders, e.g. `just excalidraw C:\libs --out datasets\excalidraw` (--help)
+[no-cd]
+excalidraw *ARGS:
+    @node "{{justfile_directory()}}/tools/ensure-deps.mjs" tools/excalidraw-to-svg
+    node "{{justfile_directory()}}/tools/excalidraw-to-svg/cli.mjs" {{ARGS}}
+
+# Tests for the Excalidraw converter (tools/excalidraw-to-svg)
+test-excalidraw:
+    @node tools/ensure-deps.mjs tools/excalidraw-to-svg
+    npm --prefix tools/excalidraw-to-svg test
 
 # Bump the version in all three files that carry it, e.g. `just bump patch --tag`
 bump *ARGS:
@@ -70,6 +82,18 @@ check: deps
 test: deps
     cargo test --workspace
     npm test
+
+# Run the CLI from source, e.g. `just cli search router` (see `just cli --help`)
+cli *ARGS:
+    cargo run -q -p iconarium-cli -- {{ARGS}}
+
+# Install iconarium-cli into ~/.cargo/bin (the installer also ships it next to the app)
+install-cli:
+    cargo install --locked --path crates/iconarium-cli
+
+# Explore the MCP server interactively in the MCP Inspector (opens a browser)
+mcp-inspect:
+    npx --yes @modelcontextprotocol/inspector@2.10.1 cargo run -q -p iconarium-cli -- mcp
 
 # Rust core engine tests only
 test-core:

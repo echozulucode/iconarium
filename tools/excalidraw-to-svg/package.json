@@ -1,0 +1,22 @@
+{
+  "name": "excalidraw-to-svg",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Convert Excalidraw libraries (.excalidrawlib) and scenes (.excalidraw) into folders of standalone SVG files.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "excalidraw-to-svg": "./cli.mjs"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "test": "node --test test/units.test.mjs test/fonts.test.mjs test/convert.test.mjs"
+  },
+  "dependencies": {
+    "@excalidraw/utils": "0.1.7",
+    "@resvg/resvg-js": "2.6.2",
+    "linkedom": "0.18.13"
+  }
+}

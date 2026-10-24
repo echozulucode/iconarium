@@ -194,13 +194,13 @@ fn tree_from_bytes(
     tree_from_text(&decoded.text, limits, resources_dir)
 }
 
-fn rasterize(
+fn rasterize_pixmap(
     tree: &usvg::Tree,
     width: u32,
     height: u32,
     transform: Transform,
     bg: Background,
-) -> Result<Vec<u8>> {
+) -> Result<Pixmap> {
     let mut pixmap = Pixmap::new(width, height)
         .ok_or_else(|| CoreError::Render(format!("Cannot allocate {width}×{height} image")))?;
     if bg == Background::White {
@@ -210,9 +210,23 @@ fn rasterize(
         resvg::render(tree, transform, &mut pixmap.as_mut())
     }))
     .map_err(|_| CoreError::Render("Renderer failed on this document".into()))?;
+    Ok(pixmap)
+}
+
+fn encode(pixmap: &Pixmap) -> Result<Vec<u8>> {
     pixmap
         .encode_png()
         .map_err(|e| CoreError::Render(format!("PNG encoding failed: {e}")))
+}
+
+fn rasterize(
+    tree: &usvg::Tree,
+    width: u32,
+    height: u32,
+    transform: Transform,
+    bg: Background,
+) -> Result<Vec<u8>> {
+    encode(&rasterize_pixmap(tree, width, height, transform, bg)?)
 }
 
 fn tree_size(tree: &usvg::Tree) -> Result<(f64, f64)> {
@@ -284,6 +298,21 @@ pub fn render_thumbnail(
     limits: &Limits,
     resources_dir: Option<&Path>,
 ) -> Result<Vec<u8>> {
+    encode(&render_thumbnail_pixmap(
+        bytes,
+        size,
+        limits,
+        resources_dir,
+    )?)
+}
+
+/// [`render_thumbnail`] without PNG encoding, for callers that composite (contact sheets).
+pub fn render_thumbnail_pixmap(
+    bytes: &[u8],
+    size: u32,
+    limits: &Limits,
+    resources_dir: Option<&Path>,
+) -> Result<Pixmap> {
     if size == 0 {
         return Err(CoreError::Invalid("Thumbnail size must be > 0".into()));
     }
@@ -293,7 +322,29 @@ pub fn render_thumbnail(
     let pw = (w * f).round().clamp(1.0, size as f64) as u32;
     let ph = (h * f).round().clamp(1.0, size as f64) as u32;
     let t = Transform::from_scale((pw as f64 / w) as f32, (ph as f64 / h) as f32);
-    rasterize(&tree, pw, ph, t, Background::Transparent)
+    rasterize_pixmap(&tree, pw, ph, t, Background::Transparent)
+}
+
+/// [`render_png`] without PNG encoding: the full document at CSS size × `scale`
+/// (pixel-capped by `limits.max_render_pixels`).
+pub fn render_pixmap(
+    bytes: &[u8],
+    scale: f64,
+    background: Background,
+    limits: &Limits,
+    resources_dir: Option<&Path>,
+) -> Result<Pixmap> {
+    validate_scale(scale)?;
+    let tree = tree_from_bytes(bytes, limits, resources_dir)?;
+    let (w, h) = tree_size(&tree)?;
+    let (pw, ph, s) = fit_scaled(w, h, scale, limits.max_render_pixels);
+    rasterize_pixmap(
+        &tree,
+        pw,
+        ph,
+        Transform::from_scale(s as f32, s as f32),
+        background,
+    )
 }
 
 /// Render the full document at its CSS size × `scale`. The scale is reduced if needed

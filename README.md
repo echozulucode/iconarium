@@ -15,6 +15,18 @@ Download `Iconarium_<version>_x64-setup.exe` from [Releases](https://github.com/
 
 Windows SmartScreen warns on first run because the installer isn't Authenticode-signed: choose **More info → Run anyway**.
 
+## Command line and MCP server
+
+`iconarium-cli` (installed next to the app and added to your PATH) searches, previews and exports icons from every library you've opened in Iconarium:
+
+```powershell
+iconarium-cli search "load balancer" --tag network
+iconarium-cli preview 4182 4190 -o pick.png
+iconarium-cli mcp                       # MCP server for Claude Desktop, Claude Code, VS Code…
+```
+
+As an MCP server it lets an LLM search by filename, folder, tags or text, see candidates as a contact-sheet image, and pick icons. Setup and tool reference: [`docs/mcp.md`](docs/mcp.md). Libraries can carry titles, descriptions and tags in an [`iconarium.yaml`](docs/library-metadata.md).
+
 ## Build on Windows
 
 Prerequisites:
@@ -40,11 +52,15 @@ The app works fully offline (the launch update check fails silently without a ne
 ```text
 crates/svg-core/      headless engine (no Tauri): scanner, SQLite index, search, SVG analysis/render/crop
   examples/           gen_dataset (deterministic test libraries), bench_pipeline, bench_search
-  tests/              svg engine, index, scanner, search, pathological inputs
+  tests/              svg engine, index, scanner, search, pathological inputs, reader APIs
+crates/iconarium-catalog/  read side of the index for tools: multi-library search, tags, iconarium.yaml,
+                      contact sheets, export (shared by the CLI and MCP server)
+crates/iconarium-cli/ `iconarium-cli` binary: commands + MCP server (`mcp`, rmcp over stdio)
 src-tauri/            app shell: commands, priority work queue, thumb:// + svgfile:// protocols,
                       watcher, clipboard (Windows: clipboard-win), native drag (OLE, copy-only)
 src/                  React UI: virtualized gallery, search, multi-select, viewer, region selection, minimap
   api/                Backend interface → tauri.ts (real) and mock.ts (in-browser demo backend)
+tools/excalidraw-to-svg/  Excalidraw libraries → folders of SVGs (`just excalidraw`)
 scripts/              gen-datasets.sh, screenshots/smoke (mock UI), e2e/ (real app via WebDriver)
 docs/                 plan, implementation plan, performance, Windows validation, screenshots
 ```

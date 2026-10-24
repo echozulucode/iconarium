@@ -6,15 +6,15 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 
 use crate::config::Settings;
 use crate::error::Result;
 use crate::library::fingerprint::fast_fingerprint;
 use crate::library::scanner::ExistingEntry;
 use crate::model::{
-    Analysis, AssetId, AssetRecord, DiscoveredFile, LibraryId, LibraryInfo, ProcessingState,
-    SearchText, ViewBox,
+    Analysis, AssetId, AssetRecord, DiscoveredFile, LibraryId, LibraryInfo, LibraryStats,
+    ProcessingState, SearchText, ViewBox,
 };
 
 use super::migrations;
@@ -113,6 +113,48 @@ impl Database {
             }
         }
         Self::init(Connection::open(path)?)
+    }
+
+    /// Open an index **owned by another process** (the desktop app) for reading.
+    ///
+    /// * Never creates anything: a missing file is an `Io(NotFound)` error, so a reader
+    ///   can't leave an empty index where the app expects its own.
+    /// * Never migrates and refuses any schema version other than this build's
+    ///   ([`migrations::latest_version`]), with a message saying which side to update.
+    /// * `PRAGMA query_only` makes every write fail. (SQLite may still checkpoint the WAL
+    ///   when the last connection closes; that is not a logical write.)
+    ///
+    /// Opened read-write at the file level rather than `SQLITE_OPEN_READ_ONLY`, because
+    /// read-only connections to a WAL database need the `-shm` file to pre-exist.
+    pub fn open_existing_query_only(path: &Path) -> Result<Self> {
+        if !path.is_file() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("index not found: {}", path.display()),
+            )
+            .into());
+        }
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.execute_batch("PRAGMA busy_timeout = 5000; PRAGMA query_only = ON;")?;
+        conn.set_prepared_statement_cache_capacity(64);
+        let found = migrations::current_version(&conn)?;
+        let expected = migrations::latest_version();
+        if found != expected {
+            let hint = if found > expected {
+                "this tool is older than the Iconarium that wrote the index; update it"
+            } else if found == 0 {
+                "the file is not an Iconarium index (or is empty)"
+            } else {
+                "open Iconarium once so it can upgrade the index"
+            };
+            return Err(crate::CoreError::Other(format!(
+                "index schema v{found} does not match this build (v{expected}): {hint}"
+            )));
+        }
+        Ok(Self { conn })
     }
 
     /// Private in-memory index (tests, benchmarks).
@@ -220,6 +262,36 @@ impl Database {
             .prepare_cached("SELECT COUNT(*) FROM assets WHERE library_id = ?1")?
             .query_row([library_id], |r| r.get(0))?;
         Ok(n as usize)
+    }
+
+    /// Cheap per-library summary, also used as a change signature by readers in other
+    /// processes: it changes when assets are added, removed or (re-)analyzed, but not when
+    /// thumbnails are recorded.
+    pub fn library_stats(&self, library_id: LibraryId) -> Result<LibraryStats> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(a.processing_state <> 'discovered'), 0),
+                    COALESCE(MAX(a.id), 0),
+                    MAX(m.analyzed_at)
+             FROM assets a LEFT JOIN svg_metadata m ON m.asset_id = a.id
+             WHERE a.library_id = ?1",
+        )?;
+        Ok(st.query_row([library_id], |r| {
+            Ok(LibraryStats {
+                assets: r.get::<_, i64>(0)? as u64,
+                analyzed: r.get::<_, i64>(1)? as u64,
+                max_asset_id: r.get(2)?,
+                last_analyzed_at: r.get(3)?,
+            })
+        })?)
+    }
+
+    /// Every asset (any library) whose full content hash is `hash`: exact duplicates.
+    pub fn assets_with_hash(&self, hash: &str) -> Result<Vec<AssetRecord>> {
+        let sql = format!("SELECT {ASSET_COLS} FROM assets WHERE content_hash = ?1 ORDER BY id");
+        let mut st = self.conn.prepare_cached(&sql)?;
+        let rows = st.query_map([hash], asset_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Insert newly discovered files (state `Discovered`) in one transaction.

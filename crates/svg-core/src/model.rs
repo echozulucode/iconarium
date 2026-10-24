@@ -245,3 +245,17 @@ pub struct LibraryInfo {
     pub last_opened: i64,
     pub last_scan: Option<i64>,
 }
+
+/// Per-library counts (see `Database::library_stats`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryStats {
+    /// Indexed assets.
+    pub assets: u64,
+    /// Assets past discovery (ready, over a limit, or unparseable).
+    pub analyzed: u64,
+    /// Largest asset id (grows when files are added).
+    pub max_asset_id: i64,
+    /// Most recent analysis time (Unix seconds), if any.
+    pub last_analyzed_at: Option<i64>,
+}

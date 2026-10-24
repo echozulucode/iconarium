@@ -33,7 +33,7 @@
     ],
     "publisher": "Eric Zimmerman",
     "copyright": "Copyright (c) 2026 Eric Zimmerman",
-    "category": "Graphics",
+    "category": "GraphicsAndDesign",
     "shortDescription": "Search, preview, crop and copy SVGs from large libraries.",
     "longDescription": "Iconarium is a fast Windows browser for large SVG libraries. Search filenames and the text inside drawings, preview at any zoom, select a region, and copy or drag it straight into PowerPoint, Visio or draw.io as a vector.",
     "homepage": "https://github.com/echozulucode/iconarium",
@@ -64,7 +64,7 @@
       "endpoints": [
         "https://github.com/echozulucode/iconarium/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU2NEIzOEJEQjdFODNDRTAKUldUZ1BPaTN2VGhMVnZjN0xBNnhUWXowb3pPQ1UxSkRWcGZ2VVV1Mk5OKzZTSTVxL1ovT2hXRE4K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5MzBFQzBCRTE4NDVBQUIKUldTcldvVGhDK3d3bVJ5cTVqdFRRMlRIbFQyKzhER1BqTjl5MlVKMmNoTTdxS2txZWVIN1hlMTIK",
       "windows": {
         "installMode": "passive"
       }

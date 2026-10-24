@@ -7,3 +7,4 @@ target/
 .claude/
 src-tauri/gen/
 *.tsbuildinfo
+/src-tauri/binaries/

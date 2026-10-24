@@ -267,6 +267,17 @@ impl Catalog {
     /// Ranked asset ids for `query` (see [`super::query`] for syntax). An empty query
     /// lists every asset in path order. `limit` truncates the result.
     pub fn search(&self, query: &str, limit: Option<usize>) -> Result<Vec<AssetId>> {
+        Ok(self
+            .search_scored(query, limit)?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect())
+    }
+
+    /// Like [`Self::search`], but with each hit's score (higher is better; `0` for every
+    /// asset of an empty query). Scores from different catalogs are comparable, so
+    /// callers can merge per-library results.
+    pub fn search_scored(&self, query: &str, limit: Option<usize>) -> Result<Vec<(AssetId, i64)>> {
         let compiled = CompiledQuery::compile(&parse(query))?;
         let order = self.order();
         let limit = limit.unwrap_or(usize::MAX);
@@ -275,7 +286,7 @@ impl Catalog {
                 .sorted
                 .iter()
                 .take(limit)
-                .map(|&s| self.entries[s as usize].rec.id)
+                .map(|&s| (self.entries[s as usize].rec.id, 0))
                 .collect());
         };
         let mut hits: Vec<(i64, u32)> = Vec::new();
@@ -292,8 +303,36 @@ impl Catalog {
         hits.sort_unstable_by(cmp);
         Ok(hits
             .into_iter()
-            .map(|(_, rank)| self.entries[order.sorted[rank as usize] as usize].rec.id)
+            .map(|(score, rank)| {
+                (
+                    self.entries[order.sorted[rank as usize] as usize].rec.id,
+                    score,
+                )
+            })
             .collect())
+    }
+
+    /// Why `id` matched `query`, for any field. Content matches carry a snippet as in
+    /// [`Self::explain`]; filename and path matches carry the filename or relative path
+    /// (original case) as the snippet. `None` for empty/invalid queries and non-matches.
+    pub fn describe_match(&self, id: AssetId, query: &str) -> Option<MatchInfo> {
+        let e = &self.entries[*self.by_id.get(&id)?];
+        let q = CompiledQuery::compile(&parse(query)).ok()??;
+        let field = q.primary_field(&e.fields())?;
+        match field {
+            MatchField::Filename => Some(MatchInfo {
+                field,
+                snippet: e.rec.filename.clone(),
+            }),
+            MatchField::Path => Some(MatchInfo {
+                field,
+                snippet: e.rec.relative_path.clone(),
+            }),
+            _ => Self::explain_entry(e, &q).or(Some(MatchInfo {
+                field,
+                snippet: String::new(),
+            })),
+        }
     }
 
     /// Why `id` matched `query`, when the match comes from SVG content (title, visible
